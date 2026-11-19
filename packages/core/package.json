@@ -1,0 +1,13 @@
+{
+  "name": "@vula/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vula core: JCS (RFC 8785) hashing. Event/leaf/checkpoint schemas and signing land here in M1/M2.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "canonicalize": "5.1.0"
+  }
+}

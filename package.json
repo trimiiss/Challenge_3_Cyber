@@ -1,0 +1,35 @@
+{
+  "name": "vula",
+  "private": true,
+  "type": "module",
+  "description": "Tamper-evident audit trail anchored on Compellio TARs",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d --build",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:reset": "docker compose -f infra/docker-compose.yml down -v",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "m0:smoke": "tsx packages/compellio/scripts/m0-smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "supabase": "2.122.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "supabase",
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@vula/compellio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Compellio Registry API client (dcap-local | gateway | mock), TAR contract ABI, and viem chain reader.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./abi.json": "./abi.json"
+  },
+  "dependencies": {
+    "@vula/core": "workspace:*",
+    "viem": "2.57.16"
+  }
+}

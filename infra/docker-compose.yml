@@ -1,0 +1,52 @@
+# Vula local stack: dev chain + Compellio Registry API (DCAP.Web).
+# Supabase runs separately via the Supabase CLI (`pnpm db:start`), which manages its own containers.
+#
+#   pnpm infra:up      start (builds the Hardhat image the first time)
+#   pnpm infra:reset   stop and wipe ALL state (do this whenever the chain restarts, see note below)
+#
+# NOTE: the Hardhat node keeps its chain in memory. If the `chain` container restarts, every TAR contract is
+# gone while DCAP.Web still remembers them. Always reset both together (`pnpm infra:reset`).
+name: vula
+
+services:
+  chain:
+    build: ./hardhat
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:8545',{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_chainId',params:[]})})
+          .then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  registry:
+    # Compellio's open-source Registry API. Run as-is, never modified.
+    # Pinned to v0.0.5: v0.0.6+/latest (commit 7d6f705, 2026-10-08) returns TAR ids with "0x" but PUT still
+    # prepends "0x" -> "0x0x..." address -> every new version fails with HTTP 500. v0.0.5..v0.0.7 differ only
+    # in that line. See docs/compellio-notes.md. Move back to :latest once Compellio fixes PUT.
+    image: ghcr.io/compellio/dcap-web:v0.0.5
+    depends_on:
+      chain:
+        condition: service_healthy
+    ports:
+      - "6060:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development # enables /swagger
+      # Default = Hardhat account #0, a publicly known key. Fine locally, NEVER on a live network.
+      DCAP__PrivateKey: ${DCAP_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+      DCAP__BlockchainUrl: ${DCAP_BLOCKCHAIN_URL:-http://chain:8545/}
+      DCAP__BlockchainId: ${DCAP_BLOCKCHAIN_ID:-31337}
+      # dataUri(v) on-chain returns {UriPrefix}{0xcontractAddress}. Points at the log server's payload endpoint.
+      DCAP__UriPrefix: ${DCAP_URI_PREFIX:-http://localhost:4000/tar/}
+    volumes:
+      - registry-data:/data
+
+volumes:
+  registry-data:

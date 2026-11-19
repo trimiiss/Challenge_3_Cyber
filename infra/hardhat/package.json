@@ -1,0 +1,8 @@
+{
+  "name": "vula-dev-chain",
+  "private": true,
+  "description": "Local Hardhat node for Vula. DCAP.Web deploys its own TAR contract, so nothing is deployed here.",
+  "devDependencies": {
+    "hardhat": "2.29.1"
+  }
+}
