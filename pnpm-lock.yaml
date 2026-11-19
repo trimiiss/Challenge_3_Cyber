@@ -8,12 +8,18 @@ importers:
 
   .:
     devDependencies:
+      '@supabase/supabase-js':
+        specifier: 2.119.0
+        version: 2.119.0
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
       '@vula/attacks':
         specifier: workspace:*
         version: link:attacks
+      '@vula/db':
+        specifier: workspace:*
+        version: link:packages/db
       '@vula/verifier':
         specifier: workspace:*
         version: link:packages/verifier

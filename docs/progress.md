@@ -29,6 +29,16 @@
 - **§7.7 Dashboard** (Next.js + Tailwind + shadcn-style UI): Supabase Auth gate (auditor role), Overview KPIs,
   TAR card, checkpoints timeline, real-time alerts (Supabase Realtime), insider attack lab (demo mode).
 
+### Verified live (2026-11-19, local chain + Supabase cloud)
+- `pnpm e2e:attacks`: clean run ✅ (10 checkpoints / 49 events), then attacks 2, 1, 4, 5, 8 all detected
+  (reconcile: modified_audit_row + unexplained_change, deleted_audit_row; verify-log: root_mismatch at v5 with
+  leaf 37 pinpointed `grade 6 → 10`, log_truncated; watchdog: "No collector heartbeat for 46 s").
+- `pnpm dashboard:smoke`: 401 without session, 403 for a professor, all routes OK, UI renders.
+- `pnpm realtime:smoke`: dashboard "Run attack 2" → alert pushed to the auditor's Realtime channel in ~3.8 s.
+- Log server restart resumes from the stored log and keeps chaining (seq 4 → TAR version 4).
+- Supabase security advisor: no errors (INFO: RLS-without-policy on deny-all tables, by design; WARN: leaked
+  password protection is off, an Auth dashboard setting).
+
 ### Decisions taken (flag if you disagree)
 - **Supabase cloud instead of local** for dev too (your call: local Supabase didn't fit in this laptop's RAM).
 - **Dedicated Postgres roles** instead of the service-role key (the MCP can't hand out secrets). The insider

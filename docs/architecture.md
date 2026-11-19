@@ -30,22 +30,33 @@ one Compellio TAR, and an independent verifier checks everything straight from t
  DASHBOARD (Next.js): overview, checkpoints + explorer links, real-time alerts, "Run attack" demo
 ```
 
-| Component | Where | Port (local) | Milestone |
+| Component | Where | Port (local) | Status |
 |---|---|---|---|
-| Dev chain (Hardhat, chain id 31337) | `infra/hardhat`, Docker | 8545 | M0 ✅ |
-| Compellio Registry API (DCAP.Web `v0.0.5`) | `infra/docker-compose.yml` | 6060 (Swagger `/swagger`) | M0 ✅ |
-| Supabase (Postgres, Auth, Storage, Realtime, Studio) | Supabase CLI | 54321 API, 54322 DB, 54323 Studio | M0 ✅ |
-| Registry client + chain reader | `packages/compellio` | | M0 ✅ |
-| JCS hashing | `packages/core` | | M0 ✅ |
-| Merkle tree | `packages/merkle` | | M1 |
-| Log server: ingest, checkpoint + anchor workers, `GET /tar/0x{address}` | `apps/log-server` | 4000 | M1–M2 |
-| Collectors + heartbeat | `apps/collector` | | M2 |
-| Grades demo app | `apps/grades-demo` | | M2 |
-| Verifier + `vula` CLI | `packages/verifier`, `apps/cli` | | M3 |
-| Dashboard | `apps/dashboard` | | M4 |
+| Dev chain (Hardhat, chain id 31337) | `infra/hardhat`, Docker | 8545 | ✅ |
+| Compellio Registry API (DCAP.Web `v0.0.5`) | `infra/docker-compose.yml` | 6060 (Swagger `/swagger`) | ✅ |
+| Supabase cloud project `vula` (Postgres, Auth, Storage, Realtime), eu-central-1, free plan | `supabase/migrations`, `supabase/seed.sql` | pooler `aws-1-eu-central-1.pooler.supabase.com:5432` | ✅ |
+| Registry client + TAR ABI + viem chain reader | `packages/compellio` | | ✅ |
+| Event / checkpoint schemas, Ed25519, JCS | `packages/core` | | ✅ |
+| RFC 6962 Merkle tree | `packages/merkle` | | ✅ 214 tests |
+| Log server: ingest, proofs, checkpoint + anchor worker, watchdog, `GET /tar/0x{address}` | `apps/log-server` | 4000 | ✅ |
+| Collector (app_audit, auth audit, heartbeat) | `apps/collector` | | ✅ |
+| UIBM Grades demo app | `apps/grades-demo` | 3001 | ✅ |
+| Verifier (`verify-log`, `reconcile`) + `vula` CLI | `packages/verifier`, `apps/cli` | | ✅ |
+| Attacks 1, 2, 4, 5, 8 | `attacks/` | | ✅ live e2e |
+| Dashboard | `apps/dashboard` | 3000 | ✅ |
 
-Final demo: the chain becomes **Etherlink Shadownet** (chain id 127823) and Supabase becomes a free cloud project.
-Everything else stays on the laptop (Docker Compose).
+`pnpm stack:up` starts the Node services (logs in `.run/`). Final demo: the chain becomes **Etherlink Shadownet**
+(chain id 127823). Supabase is already the cloud project.
+
+### Database roles (least privilege; passwords only in the local `.env`)
+
+| Role | Used by | Can |
+|---|---|---|
+| `vula_log` | log server, collector | read `app_audit.events` + auth audit (via `vula.auth_audit_entries()`), write `vula.*` |
+| `vula_auditor` | verifier, dashboard API | read everything it checks, append to `vula.alerts` |
+| `uibm_app` | UIBM Grades backend | `app.*` only; sets `request.jwt.claims` so the trigger records the professor's `auth.uid()` |
+| `uibm_admin` | **the insider** (attacks only) | everything on `app`, `app_audit`, `vula` (what the `postgres` password gives over these tables) |
+| Supabase Auth users | dashboard (auditor role), grades app (professor), log server batch uploads (service role in `app.roles`) | RLS + storage policies via `vula.has_role()` |
 
 ## How a checkpoint reaches the chain (as the real Registry API behaves)
 

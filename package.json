@@ -26,11 +26,16 @@
     "stack:up": "tsx scripts/stack.ts up",
     "stack:down": "tsx scripts/stack.ts down",
     "stack:status": "tsx scripts/stack.ts status",
-    "e2e:attacks": "tsx scripts/e2e-attacks.ts"
+    "e2e:attacks": "tsx scripts/e2e-attacks.ts",
+    "dashboard:smoke": "tsx scripts/dashboard-smoke.ts",
+    "realtime:smoke": "tsx scripts/realtime-smoke.ts",
+    "demo:reset": "tsx scripts/stack.ts down log-server collector && tsx attacks/src/cli.ts reset && tsx scripts/stack.ts up log-server collector"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "2.119.0",
     "@types/node": "22.20.5",
     "@vula/attacks": "workspace:*",
+    "@vula/db": "workspace:*",
     "@vula/verifier": "workspace:*",
     "supabase": "2.122.1",
     "tsx": "4.23.15",
