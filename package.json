@@ -17,10 +17,21 @@
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
-    "m0:smoke": "tsx packages/compellio/scripts/m0-smoke.ts"
+    "m0:smoke": "tsx packages/compellio/scripts/m0-smoke.ts",
+    "vula": "tsx apps/cli/src/main.ts",
+    "log-server": "pnpm --filter @vula/log-server start",
+    "collector": "pnpm --filter @vula/collector start",
+    "attack": "tsx attacks/src/cli.ts",
+    "grades-demo": "pnpm --filter @vula/grades-demo start",
+    "stack:up": "tsx scripts/stack.ts up",
+    "stack:down": "tsx scripts/stack.ts down",
+    "stack:status": "tsx scripts/stack.ts status",
+    "e2e:attacks": "tsx scripts/e2e-attacks.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "@vula/attacks": "workspace:*",
+    "@vula/verifier": "workspace:*",
     "supabase": "2.122.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",

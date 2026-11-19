@@ -1,0 +1,19 @@
+{
+  "name": "@vula/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "vula": "src/main.ts"
+  },
+  "scripts": {
+    "vula": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@vula/compellio": "workspace:*",
+    "@vula/core": "workspace:*",
+    "@vula/db": "workspace:*",
+    "@vula/verifier": "workspace:*",
+    "commander": "15.0.0"
+  }
+}

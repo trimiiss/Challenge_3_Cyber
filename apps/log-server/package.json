@@ -1,0 +1,20 @@
+{
+  "name": "@vula/log-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
+    "@vula/compellio": "workspace:*",
+    "@vula/core": "workspace:*",
+    "@vula/db": "workspace:*",
+    "@vula/merkle": "workspace:*",
+    "fastify": "5.12.8",
+    "viem": "2.57.16",
+    "zod": "4.6.7"
+  }
+}

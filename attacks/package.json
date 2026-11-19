@@ -1,0 +1,18 @@
+{
+  "name": "@vula/attacks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scripted insider attacks (CLAUDE.md §7.6) with their expected detections.",
+  "exports": {
+    ".": "./src/attacks.ts"
+  },
+  "scripts": {
+    "attack": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@vula/core": "workspace:*",
+    "@vula/db": "workspace:*",
+    "@vula/merkle": "workspace:*"
+  }
+}

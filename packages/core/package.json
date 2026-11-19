@@ -3,11 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Vula core: JCS (RFC 8785) hashing. Event/leaf/checkpoint schemas and signing land here in M1/M2.",
+  "description": "Vula core: event schema + leaf encoding (§7.1), checkpoint schema + Ed25519 signing (§7.3), JCS hashing.",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "canonicalize": "5.1.0"
+    "@vula/merkle": "workspace:*",
+    "canonicalize": "5.1.0",
+    "zod": "4.6.7"
   }
 }

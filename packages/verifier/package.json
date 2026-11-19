@@ -1,0 +1,19 @@
+{
+  "name": "@vula/verifier",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "verify-log (log vs chain) and reconcile (source vs log). Core logic depends only on @vula/core + @vula/merkle; ./sources holds the Supabase/chain adapters.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sources": "./src/sources.ts",
+    "./run": "./src/run.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
+    "@vula/compellio": "workspace:*",
+    "@vula/core": "workspace:*",
+    "@vula/db": "workspace:*",
+    "@vula/merkle": "workspace:*"
+  }
+}

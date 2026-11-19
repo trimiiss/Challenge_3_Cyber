@@ -1,0 +1,16 @@
+{
+  "name": "@vula/grades-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "simulate": "tsx src/simulate.ts"
+  },
+  "dependencies": {
+    "@fastify/formbody": "8.0.2",
+    "@supabase/supabase-js": "2.119.0",
+    "@vula/db": "workspace:*",
+    "fastify": "5.12.8"
+  }
+}

@@ -37,6 +37,15 @@ export function createTarReader(opts: { rpcUrl: string; tarId: string }) {
       }
     },
 
+    blockNumber(): Promise<bigint> {
+      return client.getBlockNumber();
+    },
+
+    async blockTimestamp(blockNumber: bigint): Promise<Date> {
+      const b = await client.getBlock({ blockNumber });
+      return new Date(Number(b.timestamp) * 1000);
+    },
+
     async totalVersions(): Promise<number> {
       return Number(await client.readContract({ ...base, functionName: "totalVersions" }));
     },

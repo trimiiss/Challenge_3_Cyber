@@ -1,0 +1,10 @@
+{
+  "name": "@vula/merkle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RFC 6962 / RFC 9162 §2.1 Merkle tree with inclusion and consistency proofs. Zero runtime dependencies.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

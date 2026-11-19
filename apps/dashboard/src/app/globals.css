@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Vula: serious security look, high contrast, readable on a projector. */
+@theme {
+  --color-bg: #0b1120;
+  --color-panel: #111a2e;
+  --color-panel-2: #16213a;
+  --color-line: #24314f;
+  --color-ink: #e6ebf5;
+  --color-muted: #93a1bd;
+  --color-brand: #38bdf8;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --font-sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-brand) 35%, transparent);
+}
+
+@keyframes flash-in {
+  0% { background-color: color-mix(in srgb, var(--color-bad) 35%, transparent); }
+  100% { background-color: transparent; }
+}
+.flash-in {
+  animation: flash-in 2.5s ease-out;
+}

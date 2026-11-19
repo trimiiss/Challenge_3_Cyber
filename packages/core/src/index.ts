@@ -1,1 +1,41 @@
 export { jcs, sha256Hex, jcsSha256 } from "./jcs";
+export {
+  EVENT_SOURCES,
+  eventSchema,
+  makeEvent,
+  parseEvent,
+  leafBytes,
+  eventLeafHash,
+  type EventSource,
+  type VulaEvent,
+  type EventInput,
+} from "./event";
+export { generateSigningKey, signerFromPkcs8, verifyEd25519, type Signer } from "./signing";
+export {
+  CHECKPOINT_CONTEXT,
+  CHECKPOINT_TYPE,
+  checkpointSchema,
+  parseCheckpoint,
+  checkpointSigningBytes,
+  signCheckpoint,
+  verifyCheckpointSignature,
+  checkpointChecksum,
+  batchBytes,
+  batchSha256,
+  type CheckpointPayload,
+  type UnsignedCheckpoint,
+  type EventBatch,
+} from "./checkpoint";
+export {
+  appAuditData,
+  appAuditAction,
+  appAuditEvent,
+  authAuditData,
+  authAuditEvent,
+  heartbeatEvent,
+  diffJson,
+  type AppAuditRow,
+  type AppAuditData,
+  type AuthAuditRow,
+  type FieldChange,
+} from "./sources";
