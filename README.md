@@ -37,6 +37,7 @@ insider attack and the verifier that catches it (red alert in real time). `pnpm 
 | Command | What it does |
 |---|---|
 | `pnpm test` | unit tests: Merkle (RFC 6962 + 196 transparency-dev vectors), core, registry client, verifier |
+| `pnpm testnet wallet\|status\|use\|local` | testnet-only wallet for DCAP.Web, its Shadownet balance, switch the whole stack to Etherlink Shadownet (5-min checkpoints) or back to Hardhat |
 | `pnpm m0:smoke` | Registry API round trip: create TAR, push version, read both checksums on-chain |
 | `pnpm vula verify-log [--tar <id>] [--rpc <url>] [--json]` | walk every TAR version on-chain, verify payload hash, signature, links, consistency proofs, stored leaves vs anchored roots |
 | `pnpm vula reconcile [--json]` | captured events vs Supabase today: deleted / modified / unexplained rows |

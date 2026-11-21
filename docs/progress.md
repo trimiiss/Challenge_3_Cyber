@@ -35,7 +35,10 @@
   (chain wins). Attack 3 skipped: no Auth audit rows in the DB yet (see blocked)
 
 ### Blocked / waiting on the team
-- **Etherlink testnet run** (M4, ≥ 50 checkpoints): needs a testnet-only wallet funded from the faucet.
+- **Etherlink testnet run** (M4, ≥ 50 checkpoints): testnet-only wallet `0xF52FAf67B682542eD48eBc8C0d05525e83AdC019`
+  is ready (key in gitignored `infra/.env.testnet`) but has 0 XTZ. Fund it at https://shadownet.faucet.etherlink.com/
+  (captcha), then `pnpm testnet use && pnpm stack:down && pnpm infra:up && pnpm demo:reset && pnpm stack:up`.
+  At 5-min checkpoints, 50 checkpoints take ≈ 4.5 h of the stack running. `pnpm testnet local` switches back.
 - **Attack 3 live**: the Supabase project still writes 0 rows to `auth.audit_log_entries`. Turn on writing Auth audit
   logs to the database (Dashboard → Authentication → audit log settings), sign in once, then `pnpm attack 3`.
 - **Attack 9 / `verify-image`**: needs the repo on GitHub (build attestations). No remote yet.
