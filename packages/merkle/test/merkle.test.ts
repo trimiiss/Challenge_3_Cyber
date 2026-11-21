@@ -7,6 +7,7 @@ import {
   fromHex,
   hashChildren,
   hashLeaf,
+  inclusionProofSteps,
   rootFromInclusionProof,
   toHex,
   verifyConsistency,
@@ -182,6 +183,34 @@ describe("properties: every index, every oldSize < newSize", () => {
       expect(verifyInclusion(big.leafHash(i), i, n, big.inclusionProof(i, n), big.root(n))).toBe(true);
       expect(verifyConsistency(m, n, big.root(m), big.root(n), big.consistencyProof(m, n))).toBe(true);
     }
+  });
+});
+
+describe("inclusionProofSteps (proof path shown to humans)", () => {
+  it("walks to the same root as rootFromInclusionProof, every index up to 40, and each step hashes correctly", () => {
+    const t = treeOf(40, 4);
+    for (let n = 1; n <= 40; n++) {
+      for (let i = 0; i < n; i++) {
+        const proof = t.inclusionProof(i, n);
+        const steps = inclusionProofSteps(t.leafHash(i), i, n, proof)!;
+        expect(steps).toHaveLength(proof.length);
+        let cur = t.leafHash(i);
+        for (const s of steps) {
+          const want = s.side === "left" ? hashChildren(s.sibling, cur) : hashChildren(cur, s.sibling);
+          expect(toHex(s.parent)).toBe(toHex(want));
+          cur = s.parent;
+        }
+        expect(toHex(steps.at(-1)?.parent ?? t.leafHash(i))).toBe(toHex(t.root(n)));
+      }
+    }
+  });
+
+  it("rejects malformed proofs like rootFromInclusionProof", () => {
+    const t = treeOf(9, 5);
+    const p = t.inclusionProof(3, 9);
+    expect(inclusionProofSteps(t.leafHash(3), 9, 9, p)).toBeNull();
+    expect(inclusionProofSteps(t.leafHash(3), 3, 9, [...p, p[0]!])).toBeNull();
+    expect(inclusionProofSteps(t.leafHash(3), 3, 9, p.slice(1))).toBeNull();
   });
 });
 

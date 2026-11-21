@@ -6,6 +6,7 @@ import { createTarReader, explorerTxUrl, isTarId } from "@vula/compellio";
 import { connect, loadEnv, type Sql } from "@vula/db";
 import { reconcile } from "./reconcile";
 import { verifyLog } from "./verify-log";
+import { verifyEvent, type EventSelector, type VerifyEventReport } from "./verify-event";
 import type { ReconcileReport, VerifyLogReport } from "./types";
 import {
   capturedEvents,
@@ -79,6 +80,39 @@ export async function runVerifyLog(opts: AuditOptions = {}): Promise<VerifyLogRe
 export async function runReconcile(): Promise<ReconcileReport> {
   const sql = auditorDb();
   return reconcile(await capturedEvents(sql), dbReconcileSource(sql));
+}
+
+/**
+ * Parses the CLI/dashboard `--id`: a plain integer = leaf index; `source:id` or `#id` = source id
+ * (e.g. `app_audit:123`, `supabase.auth:<uuid>`); anything else = source id.
+ */
+export function parseEventSelector(id: string): EventSelector {
+  const t = id.trim();
+  if (/^\d+$/.test(t)) return { index: Number(t) };
+  if (t.startsWith("#")) return { sourceId: t.slice(1) };
+  const m = /^((?:supabase\.)?(?:app_audit|auth)|vula\.heartbeat|ci\.release):(.+)$/.exec(t);
+  if (m) return { source: m[1]!.includes(".") ? m[1]! : `supabase.${m[1]}`, sourceId: m[2]! };
+  return { sourceId: t };
+}
+
+export async function runVerifyEvent(
+  selector: EventSelector,
+  opts: AuditOptions = {},
+): Promise<VerifyEventReport & { pinned: boolean; payloadSource: string; anchorTx: { txHash: string; explorer: string | null } | null }> {
+  const sql = auditorDb();
+  const { tarId, pinned } = await resolveTarId(sql, opts.tar);
+  const reader = createTarReader({ rpcUrl: opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545", tarId });
+  await reader.assertChain();
+  const payloads = opts.payloads === "db" ? dbPayloadSource(sql) : dataUriPayloadSource(reader);
+  const report = await verifyEvent({ chain: reader, payloads, leaves: dbLeafSource(sql), selector, trustedPublicKey: opts.pubkey });
+  // Convenience only (explorer link): the tx hash comes from the untrusted DB; the proof never depends on it.
+  let anchorTx: { txHash: string; explorer: string | null } | null = null;
+  if (report.anchor) {
+    const rows = await sql<{ tx_hash: string | null }[]>`select tx_hash from vula.checkpoints where tar_version = ${report.anchor.version} and status = 'anchored'`;
+    const tx = rows[0]?.tx_hash;
+    if (tx) anchorTx = { txHash: tx, explorer: explorerTxUrl(reader.chainId, tx) };
+  }
+  return { ...report, pinned, payloadSource: payloads.name, anchorTx };
 }
 
 export { explorerTxUrl };

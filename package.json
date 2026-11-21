@@ -27,6 +27,7 @@
     "stack:down": "tsx scripts/stack.ts down",
     "stack:status": "tsx scripts/stack.ts status",
     "e2e:attacks": "tsx scripts/e2e-attacks.ts",
+    "e2e:stretch": "tsx scripts/e2e-stretch.ts",
     "dashboard:smoke": "tsx scripts/dashboard-smoke.ts",
     "realtime:smoke": "tsx scripts/realtime-smoke.ts",
     "demo:reset": "tsx scripts/stack.ts down log-server collector && tsx attacks/src/cli.ts reset && tsx scripts/stack.ts up log-server collector"

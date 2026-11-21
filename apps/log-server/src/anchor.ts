@@ -94,12 +94,33 @@ export class Anchorer {
       return;
     }
     const last = this.lastAnchored;
+    if (last && (await this.foreignVersions(last))) return;
     const size = this.deps.log.size;
     if (size === 0 || size <= (last?.tree_size ?? 0)) return; // nothing new: no checkpoint (heartbeats keep it moving)
     if (Date.now() - this.lastCheckpointAt < this.deps.intervalMs) return;
     this.lastCheckpointAt = Date.now();
     const row = await this.createCheckpoint(last, size);
     await this.anchor(row);
+  }
+
+  private lastForeignCheck = 0;
+
+  /**
+   * Only this log server may push to its TAR. If the chain holds versions we never pushed, someone else is
+   * anchoring checkpoints in our name (e.g. with a stolen signing key + registry access): halt and alert.
+   */
+  private async foreignVersions(last: CheckpointRow): Promise<boolean> {
+    if (!this.reader || Date.now() - this.lastForeignCheck < 15_000) return false;
+    this.lastForeignCheck = Date.now();
+    const total = await this.reader.totalVersions();
+    const ours = (last.tar_version ?? last.seq) + 1;
+    if (total <= ours) return false;
+    this.halted = `TAR has ${total} versions on-chain but this log server anchored only ${ours}: foreign checkpoint(s) at version ${ours}..${total - 1}`;
+    console.error(`[anchor] ${this.halted}. Checkpointing halted.`);
+    await this.deps.store.alert("foreign_tar_version", "critical", "A checkpoint this log server never issued was anchored on its TAR", {
+      tarId: this.tar?.tarId, ours, onchain: total, versions: Array.from({ length: total - ours }, (_, i) => ours + i),
+    });
+    return true;
   }
 
   private async createCheckpoint(last: CheckpointRow | undefined, size: number): Promise<CheckpointRow> {

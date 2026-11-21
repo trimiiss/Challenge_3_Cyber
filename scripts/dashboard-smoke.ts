@@ -22,16 +22,27 @@ const { data, error } = await sb.auth.signInWithPassword({ email: process.env.AU
 if (error || !data.session) throw new Error(`auditor sign-in failed: ${error?.message}`);
 const h = { authorization: `Bearer ${data.session.access_token}` };
 
-const ov = await (await fetch(`${BASE}/api/overview`, { headers: h })).json();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const get = async (path: string): Promise<any> => (await fetch(`${BASE}${path}`, { headers: h })).json();
+const ov = await get("/api/overview");
 check("overview", typeof ov.counts?.leaves === "number", `${ov.counts?.leaves} events, TAR ${ov.tar?.tarId}, last anchored #${ov.lastAnchored?.seq}`);
-const cps = await (await fetch(`${BASE}/api/checkpoints`, { headers: h })).json();
+const cps = await get("/api/checkpoints");
 check("checkpoints", Array.isArray(cps) && cps.length > 0, `${cps.length} rows, latest #${cps[0]?.seq} ${cps[0]?.status}`);
-const alerts = await (await fetch(`${BASE}/api/alerts`, { headers: h })).json();
+const alerts = await get("/api/alerts");
 check("alerts", Array.isArray(alerts), `${alerts.length} alerts, latest: ${alerts[0]?.kind ?? "-"}`);
-const attacks = await (await fetch(`${BASE}/api/attack`, { headers: h })).json();
-check("attack lab list (demo mode)", Array.isArray(attacks) && attacks.length === 5, attacks.map((a: { id: string }) => a.id).join(","));
-const page = await fetch(`${BASE}/`);
-check("UI page renders", page.ok && (await page.text()).includes("Vula"), `(${page.status})`);
+const attacks = await get("/api/attack");
+check("attack lab list (demo mode)", Array.isArray(attacks) && attacks.length === 8, attacks.map((a: { id: string }) => a.id).join(","));
+const events = await get("/api/events?heartbeats=0");
+check("live events", Array.isArray(events.events) && events.events.length > 0,
+  `${events.events?.length} events, ${events.anchoredTreeSize} sealed, newest leaf #${events.events?.[0]?.index}`);
+const sealed = events.events?.find((e: { sealedIn: unknown }) => e.sealedIn);
+const proof = await (await fetch(`${BASE}/api/verify-event`, { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ id: String(sealed?.index ?? 0) }) })).json();
+check("verify-event (inclusion proof vs chain)", proof.ok === true && proof.status === "included",
+  `leaf ${proof.index}: ${proof.steps?.length} hashes -> TAR v${proof.anchor?.version}`);
+for (const path of ["/", "/events", "/checkpoints", "/verify", "/alerts", "/attacks"]) {
+  const page = await fetch(`${BASE}${path}`);
+  check(`UI page ${path} renders`, page.ok && (await page.text()).includes("Vula"), `(${page.status})`);
+}
 
 console.log(failures === 0 ? "\nDashboard smoke ✅\n" : `\nDashboard smoke ❌ ${failures} failure(s)\n`);
 process.exitCode = failures ? 1 : 0;

@@ -1,5 +1,46 @@
 # Progress log
 
+## 2026-11-21: §7 stretch items + M5 docs
+
+### Done
+- **§7.5 `vula verify-event`** (`--id <leaf|app_audit:id|auth:uuid>` or `--event file.json`): walks the TAR from the
+  chain (same checks as verify-log part A), recomputes the leaf hash from the event content, builds the RFC 9162
+  inclusion proof and prints the proof path up to the anchored root. Reports `included`, `not_anchored`
+  (exposure window), `not_included` (log altered), `mismatch` (a held copy differs, with diff) or `not_found`.
+  New `inclusionProofSteps` in `packages/merkle` (+2 tests). verify-log's chain walk is now `verifyCheckpoints`,
+  shared by both commands. +5 verifier tests.
+- **§7.6 attacks 3, 6, 7** scripted (`pnpm attack 3|6|7`) and in the dashboard:
+  - 3: delete `auth.audit_log_entries` rows → `reconcile` `deleted_auth_entry`
+  - 6: rewrite leaves **and** every covering `vula.checkpoints` row consistently → `verify-log` `payload_mismatch`
+  - 7: stolen signing key anchors a forged checkpoint (drops the grade event) through the Registry API →
+    `verify-log` `inconsistent`; the log server detects the foreign TAR version, halts, alerts `foreign_tar_version`
+- **Log server:** `GET /tar/0x…` now serves payloads from `vula.checkpoints` (the DB is the payload store the
+  attacker controls; the verifier re-hashes it anyway); new foreign-version check before each checkpoint.
+- **§7.7 dashboard stretch pages:** Live events (every leaf + the TAR version that sealed it, filters, "prove" link),
+  Verify (visual inclusion proof: leaf → siblings → root vs anchored root, explorer link), Attack lab (all 8 attacks
+  with story, needs, expected output, result; attack 7 asks for a second click because it forks the TAR).
+- **Supabase** (migration `20261121120000_vula_demo_attacks_live_events.sql`, applied to the cloud project):
+  `vula_demo.insider_delete_auth_entries` for attack 3 (execute only for `uibm_admin`), auditors may read
+  `vula.leaves` (RLS), `vula.leaves` added to Realtime.
+- **M5 docs:** `docs/threat-model.md`, `docs/demo-script.md` (2:00), `docs/poc-report-draft.md`; README and
+  attacks README updated. New `pnpm e2e:stretch`; `pnpm dashboard:smoke` covers the new routes and pages.
+
+### Verified live (2026-11-21, fresh Hardhat chain + Supabase cloud)
+- `pnpm vula verify-event --id 5` ✅ 5-hash proof path to TAR version 0; `verify-log` ✅
+- `pnpm dashboard:smoke` ✅ (401/403 gate, 8 attacks listed, live events, verify-event, all 6 pages render)
+- `pnpm test` ✅ 274 tests (216 Merkle, 22 verifier, core, registry client)
+- `pnpm e2e:attacks` ✅ MVP regression: attacks 2, 1, 4, 5, 8 all detected
+- `pnpm e2e:stretch` ✅ verify-event (by index, by source id, by held copy); attack 7 → `inconsistent` at the forged
+  TAR version 1, v0 still ✅, log server halted with `foreign_tar_version`; attack 6 → `payload_mismatch` at v0
+  (chain wins). Attack 3 skipped: no Auth audit rows in the DB yet (see blocked)
+
+### Blocked / waiting on the team
+- **Etherlink testnet run** (M4, ≥ 50 checkpoints): needs a testnet-only wallet funded from the faucet.
+- **Attack 3 live**: the Supabase project still writes 0 rows to `auth.audit_log_entries`. Turn on writing Auth audit
+  logs to the database (Dashboard → Authentication → audit log settings), sign in once, then `pnpm attack 3`.
+- **Attack 9 / `verify-image`**: needs the repo on GitHub (build attestations). No remote yet.
+- PoC report: Compellio's DOCX template + three named target customers (`TODO(team)` in adoption plan).
+
 ## 2026-11-19 (2): §7 Specifications → M1–M4 (local chain)
 
 ### Done

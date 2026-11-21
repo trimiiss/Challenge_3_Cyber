@@ -5,9 +5,9 @@ import { api, DEMO_MODE } from "@/lib/client";
 import { useSession } from "./auth";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, severityTone } from "./ui";
 
-interface AttackInfo { id: string; title: string; story: string; detectedBy: string; expected: string }
-interface Finding { code: string; severity: string; message: string; layer: string; details?: { changes?: { path: string; before: unknown; after: unknown }[] } }
-interface AttackResult { attack: { id: string; title: string }; done: string; detection: string; ok?: boolean; note?: string; findings?: Finding[]; firstBroken?: { version: number; reason: string } | null }
+export interface AttackInfo { id: string; title: string; story: string; detectedBy: string; expected: string; destructive?: boolean; requires?: string | null }
+export interface Finding { code: string; severity: string; message: string; layer: string; details?: { changes?: { path: string; before: unknown; after: unknown }[] } }
+export interface AttackResult { attack: { id: string; title: string }; done: string; detection: string; ok?: boolean; note?: string; findings?: Finding[]; firstBroken?: { version: number; reason: string } | null }
 interface VerifyResult { verifyLog: { ok: boolean; totalVersions: number; anchoredTreeSize: number; findings: Finding[] }; reconcile: { ok: boolean; capturedEvents: number; findings: Finding[] } }
 
 /** Demo mode only: one click = run the insider attack against the demo DB, then the verifier. */
@@ -60,7 +60,7 @@ export function AttackPanel() {
       <CardContent className="space-y-4">
         {DEMO_MODE && (
           <div className="flex flex-wrap gap-2">
-            {attacks.map((a) => (
+            {attacks.filter((a) => ["1", "2", "4", "5", "8"].includes(a.id)).map((a) => (
               <Button key={a.id} variant="danger" onClick={() => run(a.id)} disabled={!!busy} title={a.story}>
                 {busy === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
                 {a.id}. {a.title}
@@ -106,7 +106,7 @@ function Verdict({ title, ok, sub, findings }: { title: string; ok: boolean; sub
   );
 }
 
-function FindingList({ findings, max = 8 }: { findings: Finding[]; max?: number }) {
+export function FindingList({ findings, max = 8 }: { findings: Finding[]; max?: number }) {
   if (findings.length === 0) return null;
   return (
     <ul className="mt-2 space-y-1.5">

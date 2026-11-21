@@ -45,89 +45,10 @@ const LAYER = "log-vs-chain" as const;
  * then rebuilds the Merkle tree from the stored leaves and compares it with every anchored root.
  */
 export async function verifyLog(opts: VerifyLogOptions): Promise<VerifyLogReport> {
-  const findings: Finding[] = [];
-  const results: CheckpointResult[] = [];
-  const authentic: { version: number; payload: CheckpointPayload; result: CheckpointResult }[] = [];
   const gapMs = opts.heartbeatGapMs ?? 150_000;
-
   // ------------------------------------------------ A. chain -> checkpoint payloads
-  const total = await opts.chain.totalVersions();
-  let prev: CheckpointPayload | null = null;
-  let pinnedKey = opts.trustedPublicKey ?? null;
+  const { total, results, authentic, findings, pinnedKey } = await verifyCheckpoints(opts);
 
-  for (let v = 0; v < total; v++) {
-    const result: CheckpointResult = { version: v, ok: true, checks: [] };
-    results.push(result);
-    const check = (name: string, ok: boolean, detail?: string) => {
-      result.checks.push({ name, ok, detail });
-      if (!ok) result.ok = false;
-      return ok;
-    };
-    const fail = (code: string, message: string, details?: Record<string, unknown>) =>
-      findings.push({ code, severity: "critical", layer: LAYER, version: v, message, details });
-
-    const onchain = (await opts.chain.getChecksum(v)).toLowerCase().replace(/^0x/, "");
-    const raw = await opts.payloads.getPayload(v);
-    if (!check("payload available", raw !== null && raw !== undefined, opts.payloads.name)) {
-      fail("payload_missing", `No payload found for TAR version ${v} (source: ${opts.payloads.name})`);
-      break;
-    }
-    const got = jcsSha256(raw);
-    if (!check("SHA-256(JCS(payload)) = on-chain checksum", got === onchain, `chain 0x${onchain.slice(0, 16)}...`)) {
-      fail(
-        "payload_mismatch",
-        `Checkpoint store tampered: payload for TAR version ${v} from ${opts.payloads.name} does not match the checksum anchored on-chain`,
-        { onchain: `0x${onchain}`, computed: `0x${got}` },
-      );
-      break;
-    }
-    let p: CheckpointPayload;
-    try {
-      p = parseCheckpoint(raw);
-    } catch (e) {
-      check("payload is a valid VulaCheckpoint", false, (e as Error).message);
-      fail("payload_invalid", `TAR version ${v} is not a valid Vula checkpoint: ${(e as Error).message}`);
-      break;
-    }
-    Object.assign(result, { seq: p.seq, treeSize: p.treeSize, rootHash: p.rootHash, issuedAt: p.issuedAt });
-
-    pinnedKey ??= p.signer.publicKey;
-    const sigOk = check("Ed25519 signature valid", verifyCheckpointSignature(p));
-    const keyOk = check("signed by the pinned log key", p.signer.publicKey === pinnedKey, p.signer.keyId);
-    const seqOk = check("seq = TAR version", p.seq === v, `seq ${p.seq}`);
-    const logOk = check("same logId as version 0", !prev || p.logId === authentic[0]?.payload.logId, p.logId);
-    const linkOk = prev
-      ? check("prev = previous anchored checkpoint", p.prevTreeSize === prev.treeSize && p.prevRootHash === prev.rootHash,
-          `prev ${p.prevTreeSize} / ${p.prevRootHash.slice(0, 12)}...`)
-      : check("first checkpoint starts from the empty tree",
-          p.prevTreeSize === 0 && p.prevRootHash === toHex(EMPTY_ROOT) && p.consistencyProof.length === 0);
-    const growOk = check("tree grew", p.treeSize > p.prevTreeSize, `${p.prevTreeSize} -> ${p.treeSize}`);
-    const consOk = prev
-      ? check(
-          "RFC 6962 consistency proof (append-only)",
-          verifyConsistency(prev.treeSize, p.treeSize, fromHex(prev.rootHash), fromHex(p.rootHash), p.consistencyProof.map(fromHex)),
-          `${prev.treeSize} -> ${p.treeSize}`,
-        )
-      : true;
-    const batchOk = check("batch covers exactly the new leaves",
-      p.batch.fromIndex === p.prevTreeSize && p.batch.toIndex === p.treeSize - 1);
-
-    if (!sigOk) fail("bad_signature", `TAR version ${v}: checkpoint signature is invalid`);
-    if (!keyOk) fail("unknown_signer", `TAR version ${v} is signed by an unexpected key ${p.signer.keyId}`, { publicKey: p.signer.publicKey });
-    if (!seqOk) fail("seq_mismatch", `TAR version ${v} carries seq ${p.seq}`);
-    if (!logOk) fail("log_id_mismatch", `TAR version ${v} belongs to log ${p.logId}`);
-    if (!linkOk) fail("broken_link", `TAR version ${v} does not chain from the previous anchored checkpoint`);
-    if (!growOk) fail("no_growth", `TAR version ${v}: tree did not grow (${p.prevTreeSize} -> ${p.treeSize})`);
-    if (!consOk) {
-      fail("inconsistent", `TAR version ${v} is NOT an append-only extension of version ${v - 1}: history was rewritten or entries dropped`, {
-        from: prev!.treeSize, to: p.treeSize,
-      });
-    }
-    if (!batchOk) fail("bad_batch_range", `TAR version ${v}: batch range ${p.batch.fromIndex}..${p.batch.toIndex} is wrong`);
-    if (!result.ok) break; // later versions cannot be trusted to chain from a broken one
-    authentic.push({ version: v, payload: p, result });
-    prev = p;
-  }
 
   // ------------------------------------------------ B. stored leaves -> anchored roots
   const stored = (await opts.leaves.getLeaves()).sort((a, b) => a.index - b.index);
@@ -266,7 +187,108 @@ export async function verifyLog(opts: VerifyLogOptions): Promise<VerifyLogReport
   };
 }
 
-function describe(e: VulaEvent): string {
+export interface AuthenticCheckpoint {
+  version: number;
+  payload: CheckpointPayload;
+  result: CheckpointResult;
+}
+
+/**
+ * Part A of verify-log, shared with verify-event: walks every TAR version from the chain and returns the prefix
+ * of checkpoints that are authentic (checksum, signature, key, seq, linkage, consistency). Stops at the first
+ * broken version: nothing after it can be trusted to chain from it.
+ */
+export async function verifyCheckpoints(opts: Pick<VerifyLogOptions, "chain" | "payloads" | "trustedPublicKey">): Promise<{
+  total: number;
+  results: CheckpointResult[];
+  authentic: AuthenticCheckpoint[];
+  findings: Finding[];
+  pinnedKey: string | null;
+}> {
+  const findings: Finding[] = [];
+  const results: CheckpointResult[] = [];
+  const authentic: AuthenticCheckpoint[] = [];
+  const total = await opts.chain.totalVersions();
+  let prev: CheckpointPayload | null = null;
+  let pinnedKey = opts.trustedPublicKey ?? null;
+
+  for (let v = 0; v < total; v++) {
+    const result: CheckpointResult = { version: v, ok: true, checks: [] };
+    results.push(result);
+    const check = (name: string, ok: boolean, detail?: string) => {
+      result.checks.push({ name, ok, detail });
+      if (!ok) result.ok = false;
+      return ok;
+    };
+    const fail = (code: string, message: string, details?: Record<string, unknown>) =>
+      findings.push({ code, severity: "critical", layer: LAYER, version: v, message, details });
+
+    const onchain = (await opts.chain.getChecksum(v)).toLowerCase().replace(/^0x/, "");
+    const raw = await opts.payloads.getPayload(v);
+    if (!check("payload available", raw !== null && raw !== undefined, opts.payloads.name)) {
+      fail("payload_missing", `No payload found for TAR version ${v} (source: ${opts.payloads.name})`);
+      break;
+    }
+    const got = jcsSha256(raw);
+    if (!check("SHA-256(JCS(payload)) = on-chain checksum", got === onchain, `chain 0x${onchain.slice(0, 16)}...`)) {
+      fail(
+        "payload_mismatch",
+        `Checkpoint store tampered: payload for TAR version ${v} from ${opts.payloads.name} does not match the checksum anchored on-chain`,
+        { onchain: `0x${onchain}`, computed: `0x${got}` },
+      );
+      break;
+    }
+    let p: CheckpointPayload;
+    try {
+      p = parseCheckpoint(raw);
+    } catch (e) {
+      check("payload is a valid VulaCheckpoint", false, (e as Error).message);
+      fail("payload_invalid", `TAR version ${v} is not a valid Vula checkpoint: ${(e as Error).message}`);
+      break;
+    }
+    Object.assign(result, { seq: p.seq, treeSize: p.treeSize, rootHash: p.rootHash, issuedAt: p.issuedAt });
+
+    pinnedKey ??= p.signer.publicKey;
+    const sigOk = check("Ed25519 signature valid", verifyCheckpointSignature(p));
+    const keyOk = check("signed by the pinned log key", p.signer.publicKey === pinnedKey, p.signer.keyId);
+    const seqOk = check("seq = TAR version", p.seq === v, `seq ${p.seq}`);
+    const logOk = check("same logId as version 0", !prev || p.logId === authentic[0]?.payload.logId, p.logId);
+    const linkOk = prev
+      ? check("prev = previous anchored checkpoint", p.prevTreeSize === prev.treeSize && p.prevRootHash === prev.rootHash,
+          `prev ${p.prevTreeSize} / ${p.prevRootHash.slice(0, 12)}...`)
+      : check("first checkpoint starts from the empty tree",
+          p.prevTreeSize === 0 && p.prevRootHash === toHex(EMPTY_ROOT) && p.consistencyProof.length === 0);
+    const growOk = check("tree grew", p.treeSize > p.prevTreeSize, `${p.prevTreeSize} -> ${p.treeSize}`);
+    const consOk = prev
+      ? check(
+          "RFC 6962 consistency proof (append-only)",
+          verifyConsistency(prev.treeSize, p.treeSize, fromHex(prev.rootHash), fromHex(p.rootHash), p.consistencyProof.map(fromHex)),
+          `${prev.treeSize} -> ${p.treeSize}`,
+        )
+      : true;
+    const batchOk = check("batch covers exactly the new leaves",
+      p.batch.fromIndex === p.prevTreeSize && p.batch.toIndex === p.treeSize - 1);
+
+    if (!sigOk) fail("bad_signature", `TAR version ${v}: checkpoint signature is invalid`);
+    if (!keyOk) fail("unknown_signer", `TAR version ${v} is signed by an unexpected key ${p.signer.keyId}`, { publicKey: p.signer.publicKey });
+    if (!seqOk) fail("seq_mismatch", `TAR version ${v} carries seq ${p.seq}`);
+    if (!logOk) fail("log_id_mismatch", `TAR version ${v} belongs to log ${p.logId}`);
+    if (!linkOk) fail("broken_link", `TAR version ${v} does not chain from the previous anchored checkpoint`);
+    if (!growOk) fail("no_growth", `TAR version ${v}: tree did not grow (${p.prevTreeSize} -> ${p.treeSize})`);
+    if (!consOk) {
+      fail("inconsistent", `TAR version ${v} is NOT an append-only extension of version ${v - 1}: history was rewritten or entries dropped`, {
+        from: prev!.treeSize, to: p.treeSize,
+      });
+    }
+    if (!batchOk) fail("bad_batch_range", `TAR version ${v}: batch range ${p.batch.fromIndex}..${p.batch.toIndex} is wrong`);
+    if (!result.ok) break; // later versions cannot be trusted to chain from a broken one
+    authentic.push({ version: v, payload: p, result });
+    prev = p;
+  }
+  return { total, results, authentic, findings, pinnedKey };
+}
+
+export function describe(e: VulaEvent): string {
   const d = e.data as Record<string, unknown> | null;
   const grade = (x: unknown) => (x && typeof x === "object" && "grade" in x ? (x as { grade: unknown }).grade : undefined);
   const g = d ? `${grade(d.old) ?? ""}${grade(d.old) !== undefined && grade(d.new) !== undefined ? " -> " : ""}${grade(d.new) ?? ""}` : "";

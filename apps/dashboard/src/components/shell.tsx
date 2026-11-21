@@ -9,8 +9,11 @@ import { AuthGate, useSession } from "./auth";
 
 const NAV = [
   { href: "/", label: "Overview" },
+  { href: "/events", label: "Live events" },
   { href: "/checkpoints", label: "Checkpoints" },
+  { href: "/verify", label: "Verify" },
   { href: "/alerts", label: "Alerts" },
+  { href: "/attacks", label: "Attack lab" },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {

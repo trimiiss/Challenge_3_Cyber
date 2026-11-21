@@ -5,6 +5,7 @@ import { parseEvent } from "@vula/core";
 import { explorerAddressUrl, explorerTxUrl, parseTarId } from "@vula/compellio";
 import type { LogService } from "./log";
 import type { Anchorer } from "./anchor";
+import type { CheckpointRow } from "./store";
 
 const ingestBody = z.object({ events: z.array(z.unknown()).min(1).max(1000) }).strict();
 const inclusionQuery = z.object({ index: z.coerce.number().int().nonnegative(), size: z.coerce.number().int().positive().optional() });
@@ -16,6 +17,7 @@ export function buildServer(deps: {
   ingestToken: string;
   logId: string;
   watchdog: () => { gapOpen: boolean; lastHeartbeatAt: string | null };
+  loadCheckpoints: () => Promise<CheckpointRow[]>;
 }): FastifyInstance {
   const { log, anchorer } = deps;
   const app = Fastify({ logger: { level: "warn" }, bodyLimit: 5 * 1024 * 1024 });
@@ -98,17 +100,17 @@ export function buildServer(deps: {
 
   // ------------------------------------------- TAR payload resolution
   // The TAR contract's dataUri(v) = {DCAP__UriPrefix}0x{address} for every version, so this one URL serves
-  // all anchored payloads. Verifiers treat it as untrusted and re-hash every payload against the chain.
+  // all anchored payloads, straight from the checkpoint store (vula.checkpoints). Whoever controls that table
+  // controls what is served here: verifiers treat it as untrusted and re-hash every payload against the chain.
   app.get<{ Params: { address: string } }>("/tar/:address", async (req, reply) => {
     const tar = anchorer.tar;
     if (!tar || parseTarId(tar.tarId).address !== req.params.address.toLowerCase()) {
       return reply.code(404).send({ error: "unknown TAR" });
     }
+    const rows = await deps.loadCheckpoints();
     return {
       tarId: tar.tarId,
-      versions: anchorer.checkpoints
-        .filter((c) => c.status === "anchored")
-        .map((c) => ({ version: c.tar_version, payload: c.payload })),
+      versions: rows.filter((c) => c.status === "anchored").map((c) => ({ version: c.tar_version, payload: c.payload })),
     };
   });
 

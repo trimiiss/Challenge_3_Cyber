@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const user = await requireAuditor(req);
   if (user instanceof Response) return user;
   return Response.json(
-    isDemoMode() ? ATTACKS.map(({ id, title, story, detectedBy, expected }) => ({ id, title, story, detectedBy, expected })) : [],
+    isDemoMode() ? ATTACKS.map(({ id, title, story, detectedBy, expected, destructive, requires }) => ({ id, title, story, detectedBy, expected, destructive: !!destructive, requires: requires ?? null })) : [],
   );
 }
 

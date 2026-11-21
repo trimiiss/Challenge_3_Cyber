@@ -1,6 +1,6 @@
 /**
  *   pnpm attack list
- *   pnpm attack <1|2|4|5|8>
+ *   pnpm attack <1..8>      (7 writes a forged version to the chain: pnpm demo:reset afterwards)
  *   pnpm attack reset     wipe the demo (log, checkpoints, alerts, app data) and re-seed. Stop log server + collector first!
  */
 import { ATTACKS, closeInsiderDb, findAttack, insiderDb } from "./attacks";
@@ -9,7 +9,7 @@ import { resetDemo } from "./reset";
 const id = process.argv[2] ?? "list";
 try {
   if (id === "list") {
-    for (const a of ATTACKS) console.log(`  ${a.id}  ${a.title.padEnd(48)} detected by ${a.detectedBy}`);
+    for (const a of ATTACKS) console.log(`  ${a.id}  ${a.title.padEnd(52)} detected by ${a.detectedBy}${a.destructive ? "  (forks the demo TAR)" : ""}`);
   } else if (id === "reset") {
     console.log(await resetDemo(insiderDb()));
   } else {

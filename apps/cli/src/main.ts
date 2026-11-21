@@ -3,6 +3,7 @@
  * vula: the auditor's CLI (CLAUDE.md §7.5).
  *   vula verify-log   chain vs log: every TAR version, signatures, consistency proofs, stored leaves vs anchored roots
  *   vula reconcile    log vs source: captured events vs what Supabase holds today
+ *   vula verify-event inclusion proof of one event against the latest anchored root, with the proof path
  *   vula watch        both, every N seconds; new findings become dashboard alerts
  *   vula keygen       new Ed25519 checkpoint signing key
  * Exit code ≠ 0 on any critical finding. --json for machine output.
@@ -10,8 +11,9 @@
 import { Command } from "commander";
 import { generateSigningKey } from "@vula/core";
 import { reportFindings } from "@vula/verifier/sources";
-import type { Finding, ReconcileReport, VerifyLogReport } from "@vula/verifier";
-import { auditorDb, closeAuditorDb, runReconcile, runVerifyLog, type AuditOptions } from "@vula/verifier/run";
+import type { Finding, ReconcileReport, VerifyEventReport, VerifyLogReport } from "@vula/verifier";
+import { readFileSync } from "node:fs";
+import { auditorDb, closeAuditorDb, parseEventSelector, runReconcile, runVerifyEvent, runVerifyLog, type AuditOptions } from "@vula/verifier/run";
 
 const ICON = { critical: "❌", warning: "⚠️ ", info: "ℹ️ " } as const;
 
@@ -51,6 +53,31 @@ function printReconcile(r: ReconcileReport): void {
   console.log(r.ok ? "\nRESULT ✅ source matches the captured log\n" : `\nRESULT ❌ ${n} tampering finding(s) in the source system\n`);
 }
 
+function printVerifyEvent(r: VerifyEventReport & { pinned: boolean; anchorTx: { txHash: string; explorer: string | null } | null }): void {
+  console.log("\nVula verify-event  (trust anchor: the chain)");
+  console.log(`  TAR       ${r.tarId}  (chain ${r.chainId})${r.pinned ? "" : "  ⚠️  id read from vula.config (untrusted): pin it with --tar / VULA_TAR_ID"}`);
+  if (r.event) {
+    console.log(`  event     leaf ${r.index}: ${r.event.source}:${r.event.sourceId}  ${r.event.action} ${r.event.target ?? ""}  at ${r.event.occurredAt}  by ${r.event.actor ?? "?"}`);
+    console.log(`  leaf hash ${r.leafHash}   = SHA-256(0x00 || JCS(event))`);
+  }
+  if (r.anchor) {
+    console.log(`  anchored  TAR version ${r.anchor.version} (seq ${r.anchor.seq}), tree size ${r.anchor.treeSize}, root ${r.anchor.rootHash}`);
+    if (r.anchorTx) console.log(`            tx ${r.anchorTx.explorer ?? r.anchorTx.txHash}`);
+  }
+  if (r.firstSealedIn) console.log(`  sealed    since TAR version ${r.firstSealedIn.version} (${r.firstSealedIn.issuedAt})`);
+  if (r.steps.length) {
+    console.log(`\n  Proof path (${r.steps.length} hashes, leaf -> root, RFC 9162 §2.1.3)`);
+    console.log(`     leaf    ${r.leafHash}`);
+    for (const s of r.steps) {
+      const formula = s.side === "left" ? "H(0x01 ‖ sibling ‖ node)" : "H(0x01 ‖ node ‖ sibling)";
+      console.log(`  ${String(s.level).padStart(2)}. sibling ${s.sibling}  (${s.side.padEnd(5)})  -> ${s.parent}  ${formula}`);
+    }
+    console.log(`     root    ${r.computedRoot}  ${r.ok ? "= anchored root ✅" : `≠ anchored ${r.anchor?.rootHash} ❌`}`);
+  }
+  for (const c of r.changes ?? []) console.log(`        ${c.path}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`);
+  console.log(r.ok ? `\nRESULT ✅ ${r.message}\n` : `\nRESULT ❌ [${r.status}] ${r.message}\n`);
+}
+
 const program = new Command().name("vula").description("Vula auditor CLI: verify a tamper-evident log from the chain");
 
 program
@@ -82,6 +109,25 @@ program
     if (o.report) await reportFindings(auditorDb(), r.findings, "vula reconcile");
     if (o.json) console.log(JSON.stringify(r, null, 2));
     else printReconcile(r);
+    process.exitCode = r.ok ? 0 : 1;
+  });
+
+program
+  .command("verify-event")
+  .description("prove that one event is included in the log anchored on-chain (prints the proof path)")
+  .option("--id <leafIndex|sourceId>", "leaf index (e.g. 37), or source id (e.g. app_audit:123, auth:<uuid>, #123)")
+  .option("--event <file>", "a JSON file holding a copy of the event to prove (e.g. exported earlier)")
+  .option("--tar <id>", "TAR id to audit (default: VULA_TAR_ID)")
+  .option("--rpc <url>", "chain JSON-RPC URL (default: CHAIN_RPC_URL)")
+  .option("--payloads <source>", "datauri | db", "datauri")
+  .option("--pubkey <base64>", "pin the expected checkpoint signing key")
+  .option("--json", "machine-readable output")
+  .action(async (o: AuditOptions & { id?: string; event?: string; json?: boolean }) => {
+    if (!o.id && !o.event) throw new Error("pass --id <leafIndex|sourceId> or --event <file>");
+    const selector = o.event ? { event: JSON.parse(readFileSync(o.event, "utf8")) as unknown } : parseEventSelector(o.id!);
+    const r = await runVerifyEvent(selector, o);
+    if (o.json) console.log(JSON.stringify(r, null, 2));
+    else printVerifyEvent(r);
     process.exitCode = r.ok ? 0 : 1;
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_ROOT, MerkleTree, toHex } from "@vula/merkle";
+import { EMPTY_ROOT, MerkleTree, fromHex, toHex, verifyInclusion } from "@vula/merkle";
 import {
   appAuditEvent,
   batchBytes,
@@ -15,7 +15,7 @@ import {
   type EventBatch,
   type VulaEvent,
 } from "@vula/core";
-import { reconcile, verifyLog, type ReconcileSource } from "../src/index";
+import { reconcile, verifyEvent, verifyLog, type ReconcileSource } from "../src/index";
 import type { BatchSource, ChainSource, LeafSource, PayloadSource, StoredLeaf } from "../src/types";
 
 // ============================================================ test world
@@ -290,5 +290,62 @@ describe("reconcile", () => {
     const r = await reconcile(captured, src);
     expect(r.findings).toEqual([]);
     expect(r.pendingRows).toBe(1);
+  });
+});
+
+// ============================================================ verify-event
+describe("verify-event", () => {
+  const prove = (w: World, selector: Parameters<typeof verifyEvent>[0]["selector"]) => {
+    const { chain, payloads, leaves } = sources(w);
+    return verifyEvent({ chain, payloads, leaves, selector });
+  };
+
+  it("every leaf proves into the latest anchored root; the path is a valid RFC 9162 proof", async () => {
+    const w = buildWorld();
+    for (let i = 0; i < w.events.length; i++) {
+      const r = await prove(w, { index: i });
+      expect(r.status, `leaf ${i}`).toBe("included");
+      expect(r.anchor?.version).toBe(2);
+      expect(r.computedRoot).toBe(w.checkpoints[2]!.rootHash);
+      expect(verifyInclusion(fromHex(r.leafHash!), i, r.anchor!.treeSize, r.proof.map(fromHex), fromHex(r.anchor!.rootHash))).toBe(true);
+      expect(r.firstSealedIn?.version).toBe(i < 4 ? 0 : i < 9 ? 1 : 2);
+    }
+  });
+
+  it("finds events by sourceId and by a held copy of the event", async () => {
+    const w = buildWorld();
+    const bySource = await prove(w, { sourceId: w.events[0]!.sourceId, source: "supabase.app_audit" });
+    expect(bySource).toMatchObject({ ok: true, index: 0 });
+    const byCopy = await prove(w, { event: structuredClone(w.events[5]) });
+    expect(byCopy).toMatchObject({ ok: true, index: 5 });
+  });
+
+  it("attack 4: the altered leaf no longer proves into the anchored root", async () => {
+    const w = buildWorld();
+    const forged = appAuditEvent({ ...w.audit[0]!, new_row: { ...w.audit[0]!.new_row!, grade: 10 } }, 1, new Date(w.events[0]!.capturedAt));
+    w.leaves[0] = { index: 0, leafHash: eventLeafHash(forged), event: forged };
+    const r = await prove(w, { index: 0 });
+    expect(r.status).toBe("not_included");
+    expect(r.findings.map((f) => f.code)).toContain("inclusion_failed");
+    // and the original copy held by e.g. the professor no longer matches the stored log
+    const held = await prove(w, { event: w.events[0] });
+    expect(held.status).toBe("mismatch");
+    expect(held.changes).toEqual(expect.arrayContaining([expect.objectContaining({ path: "data.new.grade", before: 6, after: 10 })]));
+  });
+
+  it("an event not yet covered by a checkpoint is reported as not anchored", async () => {
+    const w = buildWorld();
+    const extra = heartbeatEvent("c1", 999, {});
+    w.leaves.push({ index: w.leaves.length, leafHash: eventLeafHash(extra), event: extra });
+    const r = await prove(w, { index: w.leaves.length - 1 });
+    expect(r.status).toBe("not_anchored");
+    expect(r.ok).toBe(false);
+  });
+
+  it("unknown events are not found; truncated logs cannot produce a proof", async () => {
+    const w = buildWorld();
+    expect((await prove(w, { sourceId: "nope" })).status).toBe("not_found");
+    w.leaves = w.leaves.slice(0, -2);
+    expect((await prove(w, { index: 0 })).status).toBe("not_included");
   });
 });

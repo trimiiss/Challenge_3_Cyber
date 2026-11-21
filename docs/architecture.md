@@ -71,7 +71,11 @@ one Compellio TAR, and an independent verifier checks everything straight from t
 4. **Strictly serial:** DCAP.Web isn't safe for concurrent writes, so there is one request in flight. On failure:
    retry with backoff, never skip a seq. The next checkpoint always chains from the last **anchored** one.
 5. **Payload hosting:** `dataUri(v)` returns `{UriPrefix}0x{address}` for every version, so the log server serves all
-   checkpoint payloads at `GET /tar/0x{address}`. Verifiers treat that response as untrusted and re-hash it.
+   checkpoint payloads at `GET /tar/0x{address}`, read from `vula.checkpoints`. Verifiers treat that response as
+   untrusted and re-hash it (a rewritten checkpoint store fails: attack 6).
+6. **Only we push:** before each checkpoint the anchor worker compares `totalVersions()` with what it anchored. A
+   version it never issued (e.g. a forged checkpoint signed with a stolen key, attack 7) halts it with a
+   `foreign_tar_version` alert.
 
 The registry client has the same interface in all three modes: `REGISTRY_MODE=dcap-local | gateway | mock`.
 Gateway mode adds `X-Session-Key` / `X-Blockchain` / `X-Issuer-Domain` and waits for the TAR id via receipt polling.
@@ -82,6 +86,7 @@ Gateway mode adds `X-Session-Key` / `X-Blockchain` / `X-Issuer-Domain` and waits
 |---|---|---|---|---|
 | **1. Source vs log** | Was evidence tampered with in the source system? | Events Vula captured ↔ current Supabase rows | deleted / modified audit rows, grade edits covered up in `app_audit.events` or `auth.audit_log_entries` | `vula reconcile` |
 | **2. Log vs chain** | Was Vula's own log tampered with? | Stored leaves + checkpoints ↔ checksums anchored on-chain | edited leaves, truncation, reordering, rewritten checkpoints, forged checkpoints dropping history | `vula verify-log` |
+| **Per event** | Is this one event part of the sealed log? | Leaf hash + RFC 9162 inclusion proof ↔ root anchored on-chain | an event altered after sealing, or a held copy that differs from the log | `vula verify-event` |
 
 The chain is the only trust anchor. Layer 1 is only meaningful because layer 2 proves that Vula's copy of the
 events is the one that was anchored.

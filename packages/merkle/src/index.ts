@@ -167,6 +167,45 @@ export function rootFromInclusionProof(leafHash: Hash, index: number, size: numb
   return sn === 0 ? r : null;
 }
 
+/** One step of an inclusion proof, bottom-up: the sibling and which side it sits on, and the parent hash. */
+export interface InclusionStep {
+  sibling: Hash;
+  side: "left" | "right";
+  parent: Hash;
+}
+
+/**
+ * Same walk as rootFromInclusionProof, but records every step (for showing the proof path to a human).
+ * Returns null if the proof is malformed for (index, size). The last step's parent is the computed root.
+ */
+export function inclusionProofSteps(leafHash: Hash, index: number, size: number, proof: Hash[]): InclusionStep[] | null {
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(size) || index < 0 || index >= size) return null;
+  if (leafHash.length !== 32 || proof.some((p) => p.length !== 32)) return null;
+  const steps: InclusionStep[] = [];
+  let fn = index;
+  let sn = size - 1;
+  let r = leafHash;
+  for (const p of proof) {
+    if (sn === 0) return null;
+    if (odd(fn) || fn === sn) {
+      r = hashChildren(p, r);
+      steps.push({ sibling: p, side: "left", parent: r });
+      if (!odd(fn)) {
+        while (!odd(fn) && fn !== 0) {
+          fn = half(fn);
+          sn = half(sn);
+        }
+      }
+    } else {
+      r = hashChildren(r, p);
+      steps.push({ sibling: p, side: "right", parent: r });
+    }
+    fn = half(fn);
+    sn = half(sn);
+  }
+  return sn === 0 ? steps : null;
+}
+
 export function verifyInclusion(leafHash: Hash, index: number, size: number, proof: Hash[], root: Hash): boolean {
   const r = rootFromInclusionProof(leafHash, index, size, proof);
   return r !== null && equalHash(r, root);

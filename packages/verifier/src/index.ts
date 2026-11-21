@@ -1,4 +1,5 @@
-export { verifyLog, type VerifyLogOptions } from "./verify-log";
+export { verifyLog, verifyCheckpoints, type VerifyLogOptions, type AuthenticCheckpoint } from "./verify-log";
+export { verifyEvent, type EventSelector, type VerifyEventOptions, type VerifyEventReport, type ProofStep } from "./verify-event";
 export { reconcile, AUDITED_TABLES, type ReconcileSource } from "./reconcile";
 export type {
   BatchSource,

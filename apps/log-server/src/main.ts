@@ -65,6 +65,7 @@ async function watchdog(): Promise<void> {
 // ------------------------------------------------------------------ server
 const app = buildServer({
   log, anchorer, ingestToken: config.ingestToken, logId: config.logId,
+  loadCheckpoints: () => store.loadCheckpoints(),
   watchdog: () => ({ gapOpen, lastHeartbeatAt: log.lastHeartbeatAt ? new Date(log.lastHeartbeatAt).toISOString() : null }),
 });
 await app.listen({ port: config.port, host: "0.0.0.0" });

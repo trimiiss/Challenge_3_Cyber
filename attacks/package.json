@@ -11,6 +11,7 @@
     "attack": "tsx src/cli.ts"
   },
   "dependencies": {
+    "@vula/compellio": "workspace:*",
     "@vula/core": "workspace:*",
     "@vula/db": "workspace:*",
     "@vula/merkle": "workspace:*"
