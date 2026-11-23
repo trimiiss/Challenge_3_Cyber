@@ -7,6 +7,7 @@ import { connect, loadEnv, type Sql } from "@vula/db";
 import { reconcile } from "./reconcile";
 import { verifyLog } from "./verify-log";
 import { verifyEvent, type EventSelector, type VerifyEventReport } from "./verify-event";
+import { verifyCtiTar, type CtiVerification } from "./verify-cti";
 import type { ReconcileReport, VerifyLogReport } from "./types";
 import {
   capturedEvents,
@@ -116,3 +117,61 @@ export async function runVerifyEvent(
 }
 
 export { explorerTxUrl };
+
+// ------------------------------------------------------------------------------------- BCBCTI (threat intel)
+export interface CtiOptions {
+  /** BCBCTI TAXII 2.1 server (the partners' exchange). */
+  bcbcti?: string;
+  /** Untrusted host for the TAR payloads BCBCTI registered (its Registry API). */
+  registry?: string;
+  rpc?: string;
+}
+
+export interface CtiReportEntry extends CtiVerification {
+  objectId: string;
+  dateAdded: string;
+}
+
+export interface CtiReport {
+  ok: boolean;
+  server: string;
+  entries: CtiReportEntry[];
+}
+
+const TAXII = "application/taxii+json;version=2.1";
+
+/**
+ * The partner's (e.g. a CERT's) view: list what BCBCTI shared, and verify every entry from the chain. Needs no
+ * Vula database, no log server and no trust in BCBCTI or the Registry API.
+ */
+export async function runVerifyCti(opts: CtiOptions = {}): Promise<CtiReport> {
+  const server = (opts.bcbcti || process.env.BCBCTI_URL || "http://localhost:8090").replace(/\/$/, "");
+  const registry = (opts.registry || process.env.BCBCTI_REGISTRY_URL || "http://localhost:6061").replace(/\/$/, "");
+  const rpc = opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545";
+  const res = await fetch(`${server}/api/collections/default/manifest`, { headers: { Accept: TAXII } });
+  if (!res.ok) throw new Error(`BCBCTI manifest -> HTTP ${res.status}`);
+  const manifest = (await res.json()) as {
+    objects?: { id: string; date_added: string; x_bcbcti_registry_tar_id: string }[];
+  };
+  const entries: CtiReportEntry[] = [];
+  for (const m of manifest.objects ?? []) {
+    const chain = createTarReader({ rpcUrl: rpc, tarId: m.x_bcbcti_registry_tar_id });
+    await chain.assertChain();
+    const r = await verifyCtiTar({
+      chain,
+      async fetchTarPayload(version) {
+        // DCAP.Web REST versions are 1-based; `Accept: text/plain` returns the exact stored body.
+        const p = await fetch(`${registry}/api/v1/TAR/version/raw/${m.x_bcbcti_registry_tar_id}:${version + 1}`, {
+          headers: { Accept: "text/plain" },
+        }).catch(() => null);
+        return p?.ok ? p.text() : null;
+      },
+      async fetchObject(url) {
+        const o = await fetch(url).catch(() => null);
+        return o?.ok ? o.text() : null;
+      },
+    });
+    entries.push({ ...r, objectId: m.id, dateAdded: m.date_added });
+  }
+  return { ok: entries.every((e) => e.ok), server, entries };
+}

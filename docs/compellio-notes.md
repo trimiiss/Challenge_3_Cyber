@@ -159,8 +159,7 @@ Other quirks:
 - **Serialise against DCAP.Web** (one registration in flight).
 - **Verification order:** TAR id → chain (`totalVersions`, `getChecksum`) → fetch payload → JCS hash must equal
   on-chain checksum → only then trust what the payload references.
-- *(Stretch)* BCBCTI = TAXII 2.1 server at `ghcr.io/compellio/bcbcti:latest`; we would POST a STIX 2.1 `sighting` or
-  `incident` when the verifier detects tampering.
+- BCBCTI hand-off built: see §7.
 
 ## 6. Verified live: M0 smoke test (`pnpm infra:up && pnpm m0:smoke`)
 
@@ -171,3 +170,31 @@ DCAP.Web v0.0.5 + Hardhat 31337, 2026-11-19:
   `owner()` = Hardhat account #0; `dataUri(0) = dataUri(1) = http://localhost:4000/tar/0x5fbd…`;
   tx hashes found via `Updated` events.
 - The payload fetched back from the Registry API re-hashes (after JCS) to the on-chain checksum.
+
+## 7. Verified live: BCBCTI hand-off (2026-11-23, BCBCTI `v1.0.0-rc.3` + DCAP.Web `v0.0.5` + Hardhat 31337)
+
+Setup (`infra/docker-compose.yml`): `bcbcti` (TAXII on :8090) → its own `registry-cti` DCAP.Web (:6061, Hardhat
+account #1) so its registrations never overlap with our anchor worker's; `bcbcti-files` serves BCBCTI's FileSystem
+storage read-only on :8091 (the "permissioned storage" partners read from). `ReconciliationFrequency=00:00:05`
+(default 5 min) and `MaxConcurrentIngestions=1` (required with DCAP.Web).
+
+Flow seen: attack 3 → `vula reconcile --report` writes 2 alerts → the log server's CTI worker POSTs each as a STIX 2.1
+`incident` to `/api/collections/default/objects` → TAXII status `pending` → ~5 s later `success_count = 1` and the
+manifest carries `x_bcbcti_registry_tar_id` (`urn:tar:eip155.31337:…`, one new contract per object) and
+`x_bcbcti_registry_version_id = 1` (DCAP.Web's 1-based REST version). `vula verify-cti` ✅ for both; editing the stored
+object (`x_vula_severity` critical → info) → ❌ `[artifact] … was altered`; restoring it → ✅ again.
+
+**Where real behaviour differs from BCBCTI's docs** (our verifier accepts both forms):
+- **Checksum = SHA-256 of the exact body text, not of JCS.** BCBCTI's TAR payload isn't canonical (its own key order,
+  `+` escaped as `+`), and DCAP.Web hashes the bytes it received. Our own checkpoints are sent as JCS text, so for
+  them raw = JCS and the rule in §1 holds. A verifier therefore needs the exact text (`GET /api/v1/TAR/version/raw/
+  {id}:{v}` with `Accept: text/plain`), or must accept either hash.
+- `@type` is **`stixBundle`**, not `StixBundle` (`@context` really is the placeholder `urn:tar:...`).
+- The artifact's `hashes["SHA-256"]` is **base64**, not hex; the object file name is the base64url of the same hash.
+  The stored object is its JCS form, so SHA-256(file) = SHA-256(JCS(object)).
+- DCAP.Web's TAR record for BCBCTI's TARs has `dataUri = {DCAP__UriPrefix}0x{address}`; we point the prefix at
+  `registry-cti`'s `/api/v1/TAR/` for readability, but the verifier fetches `version/raw` directly.
+
+Worth reporting to Compellio together with the PUT bug: the doc/implementation mismatch on the checksum rule and the
+hash encoding.
+

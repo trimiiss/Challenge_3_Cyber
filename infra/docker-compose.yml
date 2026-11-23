@@ -48,5 +48,52 @@ services:
     volumes:
       - registry-data:/data
 
+  # ---- Threat-intel hand-off (CLAUDE.md §0 stretch #1) ------------------------------------------------------
+  # Compellio's BCBCTI: a TAXII 2.1 server that registers every STIX object it receives as its own TAR. The log
+  # server publishes each Vula alert to it as a STIX incident; partners / KOS-CERT pull it over TAXII and check it
+  # with `vula verify-cti`. Run as-is, never modified.
+  registry-cti:
+    # BCBCTI registers on its own schedule and DCAP.Web can't take concurrent registrations, so BCBCTI gets its
+    # own Registry API instance with its own key (Hardhat account #1, publicly known: local only).
+    image: ghcr.io/compellio/dcap-web:v0.0.5
+    depends_on:
+      chain:
+        condition: service_healthy
+    ports:
+      - "6061:8080"
+    environment:
+      DCAP__PrivateKey: ${DCAP_CTI_PRIVATE_KEY:-0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d}
+      DCAP__BlockchainUrl: ${DCAP_BLOCKCHAIN_URL:-http://chain:8545/}
+      DCAP__BlockchainId: ${DCAP_BLOCKCHAIN_ID:-31337}
+      DCAP__UriPrefix: ${DCAP_CTI_URI_PREFIX:-http://localhost:6061/api/v1/TAR/}
+    volumes:
+      - registry-cti-data:/data
+
+  bcbcti:
+    image: ghcr.io/compellio/bcbcti:v1.0.0-rc.3
+    depends_on: [registry-cti]
+    ports:
+      - "8090:8080"
+    environment:
+      RegistryAPI__ServiceUrl: http://registry-cti:8080
+      BCBCTI__Ingestion__MaxConcurrentIngestions: 1 # required with DCAP.Web (docs/configuration.md)
+      BCBCTI__Ingestion__ReconciliationFrequency: "00:00:05" # default 5 min; short for the demo
+      BCBCTI__Storage__FileSystem__PublicBaseUrl: http://localhost:8091/
+      BCBCTI__TAXII__ServerTitle: Vula threat-intel exchange (Compellio BCBCTI)
+    volumes:
+      - bcbcti-data:/data
+
+  bcbcti-files:
+    # The "permissioned storage" partners read the submitted STIX objects from (BCBCTI's FileSystem provider
+    # leaves sharing to us). Read-only static server over BCBCTI's volume.
+    image: busybox:1.36
+    command: ["httpd", "-f", "-p", "8080", "-h", "/data"]
+    ports:
+      - "8091:8080"
+    volumes:
+      - bcbcti-data:/data:ro
+
 volumes:
   registry-data:
+  registry-cti-data:
+  bcbcti-data:

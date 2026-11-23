@@ -31,6 +31,7 @@
     "e2e:stretch": "tsx scripts/e2e-stretch.ts",
     "dashboard:smoke": "tsx scripts/dashboard-smoke.ts",
     "realtime:smoke": "tsx scripts/realtime-smoke.ts",
+    "auth-audit": "tsx scripts/auth-audit.ts",
     "demo:reset": "tsx scripts/stack.ts down log-server collector && tsx attacks/src/cli.ts reset && tsx scripts/stack.ts up log-server collector"
   },
   "devDependencies": {

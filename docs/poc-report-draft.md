@@ -43,9 +43,10 @@ chain*: Vula's own stored copy no longer reproduces the roots anchored on-chain.
 | First checkpoint | `POST /api/v1/TAR` with the JCS (RFC 8785) text of the checkpoint | DCAP.Web deploys the TAR contract; the TAR id `urn:tar:eip155.{chain}:{address}` becomes the log's permanent identity | `totalVersions() = 1`, `getChecksum(0) = SHA-256(JCS(payload))` |
 | Every next checkpoint | `PUT /api/v1/TAR/{id}` | `push(checksum)` adds one version: **one TAR version = one checkpoint** (seq = version index) | wait for `hasChecksum` / the `Updated(version, checksum)` event, store the tx hash for the explorer link |
 | Verification | none: the verifier reads the contract directly (`totalVersions`, `getChecksum`, `dataUri`) with viem | — | re-hash every payload and compare with the on-chain checksum |
+| Threat-intel hand-off | Compellio's **BCBCTI** (TAXII 2.1) registers each alert we publish as a STIX 2.1 `incident` through its own Registry API instance | one TAR per shared incident | `vula verify-cti`: TAR checksum on-chain → artifact hash → STIX object (BCBCTI's verification flow) |
 
 - The checksum rule `SHA-256(JCS(payload))` was confirmed against DCAP.Web's source and in a test that compares our
-  own hash with `getChecksum` (milestone M0).
+  own hash with `getChecksum` (milestone M0). DCAP.Web hashes the exact body it receives, so we always send JCS text.
 - DCAP.Web is not safe for concurrent writes, so the anchor worker keeps exactly one request in flight, retries the
   *same* payload with backoff, never skips a seq, and always chains from the last **anchored** checkpoint.
 - `dataUri(v)` points to our log server, which serves all payloads. Payloads are treated as untrusted: a rewritten
@@ -88,6 +89,11 @@ up to 1,000, tamper/reorder/truncate/fork negatives); verifier unit tests for ev
 | 7 | stolen signing key anchors a forged checkpoint dropping an event | verify-log + log server | `inconsistent` (consistency proof fails); earlier history stays verified; `foreign_tar_version` alarm |
 | 8 | stop the collector | watchdog | `heartbeat_gap` alert |
 
+**Alerts become shared, verifiable threat intel.** Each tampering alert is published to Compellio's BCBCTI as a STIX
+2.1 incident (no row data, only what happened, where, and a hash of the full alert) and registered as its own TAR.
+A partner or KOS-CERT runs `vula verify-cti`: ✅ for the attack 3 incidents; after editing a stored incident to
+downplay it (critical → info): ❌ `artifact … was altered`.
+
 **Live numbers [testnet]:** TAR id …, ≥ 50 anchored checkpoints, … events, median anchor latency … s, gas per
 `push` …, explorer link …. Locally (Hardhat): anchoring takes 0.5–0.7 s per checkpoint; a dashboard attack produces a
 red real-time alert in ≈ 4 s.
@@ -109,11 +115,13 @@ red real-time alert in ≈ 4 s.
 - **Influencer:** the external auditor, who can verify with the free open-source CLI and a public RPC.
 - **Offer:** free verifier; Starter ~€49 / month per source; Team ~€199 / month; self-hosted licence. Every customer
   is a recurring consumer of Compellio Registry API credits.
-- **First customers and reach:** [TODO(team): three named companies + contacts]; pilot of 6 weeks with 1–2 design
-  partners. Details: `docs/adoption-plan.md`.
+- **First customers and reach:** ASEE SH.P.K (ISO 27001-certified IT supplier to finance), Kosbit (managed services
+  with admin access to client systems) and KIT (public-sector software house), reached through STIKK and EEN KosInn;
+  UIBM, whose grades in SMU are the demo story, as the first design partner. 6-week pilot with 1–2 design partners.
+  Details: `docs/adoption-plan.md`.
 
 ## 8. Next steps
 
-Testnet hardening and Compellio Gateway mode with a real API key; BCBCTI hand-off (publish each tampering alert as a
-STIX 2.1 sighting so partners and CERTs can consume it as a verifiable TAR); build provenance of the Vula images
+Testnet hardening and Compellio Gateway mode with a real API key; BCBCTI on the Gateway and a real exchange with a
+partner CERT; build provenance of the Vula images
 (`ci.release` leaves + GitHub attestations); collectors beyond Supabase (plain Postgres, cloud audit logs).

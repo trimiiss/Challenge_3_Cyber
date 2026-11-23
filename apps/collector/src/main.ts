@@ -72,15 +72,18 @@ async function pollAppAudit(): Promise<number> {
 }
 
 async function pollAuth(): Promise<number> {
-  const rows = await sql<AuthAuditRow[]>`
-    select id, payload, created_at, ip_address
-    from vula.auth_audit_entries(${auth.createdAt}::timestamptz, ${auth.id}::uuid, ${BATCH})`;
+  // The cursor keeps created_at as Postgres text, and it goes back as text (`::text::timestamptz`; a bare
+  // `::timestamptz` parameter makes postgres.js serialize it through a JS Date). A Date drops the microseconds, so
+  // the last row would compare as newer than the cursor and be fetched again on every poll.
+  const rows = await sql<(AuthAuditRow & { cursor_ts: string })[]>`
+    select id, payload, created_at, ip_address, created_at::text as cursor_ts
+    from vula.auth_audit_entries(${auth.createdAt}::text::timestamptz, ${auth.id}::uuid, ${BATCH})`;
   if (rows.length === 0) return 0;
   const now = new Date();
   const events = rows.map((r, i) => authAuditEvent(r, auth.seq + i + 1, now));
   await ship(events);
   const last = rows.at(-1)!;
-  auth = { createdAt: new Date(last.created_at!).toISOString(), id: last.id, seq: auth.seq + rows.length };
+  auth = { createdAt: last.cursor_ts, id: last.id, seq: auth.seq + rows.length };
   await saveCursor("supabase.auth", auth);
   return rows.length;
 }

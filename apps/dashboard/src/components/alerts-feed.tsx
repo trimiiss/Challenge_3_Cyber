@@ -1,11 +1,38 @@
 "use client";
-import { AlertTriangle, BellRing, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, BellRing, CheckCircle2, Info, Share2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ago, cn } from "@/lib/utils";
 import { useLive, type AlertRow } from "./live";
 import { Badge, Card, CardContent, CardHeader, CardTitle, severityTone } from "./ui";
 
 const ICON = { critical: AlertTriangle, warning: AlertTriangle, info: Info } as const;
+
+/** BCBCTI hand-off status: the alert as a STIX incident, registered as its own TAR for partners / KOS-CERT. */
+function CtiLine({ a }: { a: AlertRow }) {
+  if (a.severity === "info") return null;
+  const c = a.cti;
+  if (!c) return <div className="mt-1.5 text-xs text-muted">Threat intel: queued for BCBCTI</div>;
+  if (c.state === "failed") return <div className="mt-1.5 text-xs text-warn">Threat intel: BCBCTI rejected it ({c.error})</div>;
+  if (c.state === "submitted") {
+    return (
+      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+        <Share2 className="h-3.5 w-3.5" /> Shared as STIX incident, registering as a TAR…
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+      <Share2 className="h-3.5 w-3.5 text-ok" />
+      <Badge tone="ok">STIX incident · TAR</Badge>
+      <span className="font-mono">{c.tarId}</span>
+      {a.ctiExplorer && (
+        <a href={a.ctiExplorer} target="_blank" rel="noreferrer" className="text-brand hover:underline">
+          explorer
+        </a>
+      )}
+    </div>
+  );
+}
 
 export function AlertsFeed({ limit = 12, title = "Alerts · live" }: { limit?: number; title?: string }) {
   const { data } = useLive<AlertRow[]>("/api/alerts", ["alerts"], 20_000);
@@ -58,6 +85,7 @@ export function AlertsFeed({ limit = 12, title = "Alerts · live" }: { limit?: n
                     {typeof a.details?.layer === "string" && <span>{a.details.layer as string}</span>}
                     <span>{ago(a.created_at)}</span>
                   </div>
+                  <CtiLine a={a} />
                 </div>
               </div>
             </div>

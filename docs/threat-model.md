@@ -47,6 +47,12 @@ Events are sealed only when the next checkpoint is anchored: 1 minute locally, 5
 a chain-level trace. Mitigations: short interval; heartbeat leaves every 15–60 s; `vula verify-log` reports the
 unanchored tail as `unanchored_tail` (info) so the auditor sees the size of the open window.
 
+The alerts themselves sit in the same database the insider controls. The log server shares every warning/critical
+alert with Compellio's BCBCTI within ~3 s, and BCBCTI registers it as its own TAR a few seconds later; after that,
+deleting or editing the alert in `vula.alerts` no longer erases it, and editing the shared copy is caught by
+`vula verify-cti`. The shared STIX incident carries no row data (no grades, e-mails or diffs), only the kind, layer,
+checkpoint version, leaf index and a SHA-256 commitment to the full alert.
+
 ## Not solved (stated plainly)
 
 - **Disable before acting.** An insider who disables the audit triggers or the collector *before* changing data
@@ -71,7 +77,8 @@ Merkle consistency and inclusion proofs give all three.
 
 Cost and throughput. One on-chain transaction per checkpoint covers every event since the previous one (thousands if
 needed), and per-event inclusion proofs (`vula verify-event`) are still available. BCBCTI's per-object TARs make sense
-for a few high-value threat-intel objects; audit logs have thousands of low-value events per day.
+for a few high-value threat-intel objects; audit logs have thousands of low-value events per day. That is exactly how
+we use both: one TAR per log for the events, one BCBCTI TAR per tampering incident.
 
 ## Demo-only shortcuts (not for production)
 

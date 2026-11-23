@@ -15,6 +15,8 @@ export const config = {
   /** No heartbeat for this long = alert. Default 2.5 × the 60 s heartbeat interval. */
   heartbeatGapMs: num("HEARTBEAT_GAP_MS", 150_000),
   rpcUrl: process.env.CHAIN_RPC_URL || "http://localhost:8545",
+  /** Compellio BCBCTI (TAXII 2.1) for sharing alerts as STIX incidents. Empty = hand-off off. */
+  bcbctiUrl: (process.env.BCBCTI_URL || "").replace(/\/$/, ""),
   supabaseUrl: requireEnv("SUPABASE_URL"),
   supabaseKey: requireEnv("SUPABASE_PUBLISHABLE_KEY"),
   serviceEmail: requireEnv("LOGSERVER_EMAIL"),

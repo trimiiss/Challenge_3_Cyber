@@ -13,7 +13,18 @@ import { generateSigningKey } from "@vula/core";
 import { reportFindings } from "@vula/verifier/sources";
 import type { Finding, ReconcileReport, VerifyEventReport, VerifyLogReport } from "@vula/verifier";
 import { readFileSync } from "node:fs";
-import { auditorDb, closeAuditorDb, parseEventSelector, runReconcile, runVerifyEvent, runVerifyLog, type AuditOptions } from "@vula/verifier/run";
+import {
+  auditorDb,
+  closeAuditorDb,
+  parseEventSelector,
+  runReconcile,
+  runVerifyCti,
+  runVerifyEvent,
+  runVerifyLog,
+  type AuditOptions,
+  type CtiOptions,
+  type CtiReport,
+} from "@vula/verifier/run";
 
 const ICON = { critical: "❌", warning: "⚠️ ", info: "ℹ️ " } as const;
 
@@ -78,6 +89,20 @@ function printVerifyEvent(r: VerifyEventReport & { pinned: boolean; anchorTx: { 
   console.log(r.ok ? `\nRESULT ✅ ${r.message}\n` : `\nRESULT ❌ [${r.status}] ${r.message}\n`);
 }
 
+function printVerifyCti(r: CtiReport): void {
+  console.log(`\nVula verify-cti  (shared threat intel from ${r.server}, trust anchor: the chain)`);
+  if (r.entries.length === 0) console.log("  nothing shared yet");
+  for (const e of r.entries) {
+    const o = e.object as { name?: string; x_vula_severity?: string; x_vula_log_id?: string } | null;
+    console.log(`\n  ${e.ok ? "✅" : "❌"} ${e.objectId}`);
+    if (o?.name) console.log(`     ${o.name}  [${o.x_vula_severity ?? "?"}] on log ${o.x_vula_log_id ?? "?"}`);
+    console.log(`     TAR ${e.tarId} version ${e.version ?? "-"}  (shared ${e.dateAdded})`);
+    console.log(`     ${e.ok ? "" : `[${e.step}] `}${e.reason}`);
+  }
+  const bad = r.entries.filter((e) => !e.ok).length;
+  console.log(r.ok ? `\nRESULT ✅ ${r.entries.length} shared incident(s) verified\n` : `\nRESULT ❌ ${bad} of ${r.entries.length} shared incident(s) failed\n`);
+}
+
 const program = new Command().name("vula").description("Vula auditor CLI: verify a tamper-evident log from the chain");
 
 program
@@ -128,6 +153,20 @@ program
     const r = await runVerifyEvent(selector, o);
     if (o.json) console.log(JSON.stringify(r, null, 2));
     else printVerifyEvent(r);
+    process.exitCode = r.ok ? 0 : 1;
+  });
+
+program
+  .command("verify-cti")
+  .description("partner view: verify every tampering incident shared through Compellio's BCBCTI, from the chain")
+  .option("--bcbcti <url>", "BCBCTI TAXII 2.1 server (default: BCBCTI_URL)")
+  .option("--registry <url>", "untrusted host of the TAR payloads (default: BCBCTI_REGISTRY_URL)")
+  .option("--rpc <url>", "chain JSON-RPC URL (default: CHAIN_RPC_URL)")
+  .option("--json", "machine-readable output")
+  .action(async (o: CtiOptions & { json?: boolean }) => {
+    const r = await runVerifyCti(o);
+    if (o.json) console.log(JSON.stringify(r, null, 2));
+    else printVerifyCti(r);
     process.exitCode = r.ok ? 0 : 1;
   });
 

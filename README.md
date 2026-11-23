@@ -42,6 +42,7 @@ insider attack and the verifier that catches it (red alert in real time). `pnpm 
 | `pnpm vula verify-log [--tar <id>] [--rpc <url>] [--json]` | walk every TAR version on-chain, verify payload hash, signature, links, consistency proofs, stored leaves vs anchored roots |
 | `pnpm vula reconcile [--json]` | captured events vs Supabase today: deleted / modified / unexplained rows |
 | `pnpm vula verify-event --id <leaf\|app_audit:id> [--event file.json]` | inclusion proof of one event against the latest anchored root, prints the proof path |
+| `pnpm vula verify-cti [--bcbcti <url>] [--json]` | partner / CERT view: every alert shared through Compellio's BCBCTI as a STIX incident, verified from the chain |
 | `pnpm vula watch` | both every 60 s; new findings become dashboard alerts |
 | `pnpm attack <1..8>` | scripted insider attacks ([attacks/README.md](attacks/README.md)); 7 forks the demo TAR |
 | `pnpm e2e:attacks` | runs every MVP attack against the live stack and asserts each detection |

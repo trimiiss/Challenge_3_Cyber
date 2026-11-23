@@ -46,5 +46,8 @@ export interface AlertRow {
   severity: "info" | "warning" | "critical";
   title: string;
   details: Record<string, unknown>;
+  /** BCBCTI hand-off: the alert shared as a STIX 2.1 incident and registered as its own TAR. */
+  cti: { state: "submitted" | "registered" | "failed"; objectId: string; tarId?: string; error?: string } | null;
+  ctiExplorer: string | null;
   created_at: string;
 }

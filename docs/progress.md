@@ -1,5 +1,39 @@
 # Progress log
 
+## 2026-11-23: adoption targets + Auth audit switch
+
+### Done
+- **Adoption plan v0.2:** researched and named the first 3 targets (ASEE SH.P.K, Kosbit, KIT), UIBM as design partner,
+  a 10-organisation outreach list, Kosovo-specific drivers (CBK ICT rules, Law 08/L-173), KosICT/EEN channel, sources.
+  The PoC report draft §7 now names them. Contact persons get added after the first reply.
+- **`pnpm auth-audit status|on|off`:** reads "write Auth audit logs to the database" with a personal access
+  token. Confirmed the need: 4 users, last sign-in today, 0 rows in `auth.audit_log_entries`, setting OFF.
+  The setting can't be changed from the terminal: the v1 Management API returns `audit_log_disable_postgres` but
+  ignores it on PATCH, and the dashboard's `/platform` endpoint rejects personal tokens ("Unsupported access token").
+
+- **Attack 3 live** ✅ (Auth audit logs to the database turned on in the dashboard): sign-in captured as
+  `supabase.auth` leaves, `pnpm attack 3` deleted 2 entries, `reconcile` → 2× `deleted_auth_entry`.
+- **Collector fix:** the auth cursor lost microseconds (JS Date), so the newest auth row was re-fetched on every poll
+  and the per-source seq kept climbing. The cursor is now Postgres text, sent back as `::text::timestamptz`
+  (postgres.js serialises a bare `::timestamptz` parameter through a Date). Verified: each sign-in captured once.
+- **BCBCTI hand-off (§0 stretch #1)** ✅ live: Compellio BCBCTI `v1.0.0-rc.3` + its own DCAP.Web + read-only object
+  storage in `infra/docker-compose.yml`; log-server CTI worker publishes each warning/critical alert as a STIX 2.1
+  `incident` (no row data, `x_vula_alert_sha256` commitment) and records the TAR in `vula.alerts.cti` (migration
+  `20261123120000_vula_alerts_cti.sql`, applied); dashboard alerts show "STIX incident · TAR"; new
+  `vula verify-cti` follows BCBCTI's verification flow from the chain. Live: 2 incidents from attack 3 ✅; stored
+  incident edited (critical → info) ❌ `artifact … was altered`; restored ✅. BCBCTI's real format differs from its
+  docs (raw-body checksum, `stixBundle`, base64 hash): `docs/compellio-notes.md` §7. +13 tests (STIX mapping, verify-cti).
+- Demo script: BCBCTI segment at 1:37–1:47 (verify and attack 7 shortened), still 2:00.
+
+### Not verified yet
+- Dashboard alert badge not looked at in a browser (Next.js didn't fit in RAM next to Docker today); API + types
+  build clean.
+- BCBCTI on testnet needs a second funded wallet for `registry-cti` (`DCAP_CTI_PRIVATE_KEY`), or the Gateway.
+
+### Blocked / waiting on the team
+- Laptop RAM: 5.8 GB total, ~0.5 GB free with Edge + VS Code open; Docker Desktop hung once today. Close Edge tabs
+  before running the full stack + dashboard.
+
 ## 2026-11-21: §7 stretch items + M5 docs
 
 ### Done

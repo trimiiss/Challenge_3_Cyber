@@ -8,6 +8,7 @@ import { LogService } from "./log";
 import { Anchorer } from "./anchor";
 import { BatchStore } from "./batches";
 import { buildServer } from "./server";
+import { CtiPublisher } from "./cti";
 
 const store = new Store(connect("vula_log", { max: 4 }));
 const log = new LogService(store);
@@ -76,6 +77,11 @@ const timers = [
   setInterval(() => void anchorer.tick().catch((e) => console.error("[anchor]", e)), 5_000),
   setInterval(() => void watchdog().catch((e) => console.error("[watchdog]", e)), 5_000),
 ];
+if (config.bcbctiUrl) {
+  const cti = new CtiPublisher(store.sql, { url: config.bcbctiUrl, logId: config.logId, logTarId: () => anchorer.tar?.tarId ?? null });
+  timers.push(setInterval(() => void cti.tick().catch((e) => console.error("[cti]", (e as Error).message)), 3_000));
+  console.log(`[vula] sharing alerts as STIX incidents with BCBCTI at ${config.bcbctiUrl}`);
+}
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, async () => {

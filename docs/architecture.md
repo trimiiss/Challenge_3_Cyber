@@ -28,6 +28,10 @@ one Compellio TAR, and an independent verifier checks everything straight from t
  AUDITOR: vula verify-log / reconcile ── reads totalVersions / getChecksum via viem ──────────┘
                                       ── fetches payloads + leaves (untrusted), recomputes everything locally
  DASHBOARD (Next.js): overview, checkpoints + explorer links, real-time alerts, "Run attack" demo
+
+ THREAT-INTEL HAND-OFF: every warning/critical alert ──STIX 2.1 incident, TAXII POST──► Compellio BCBCTI
+     (log server CTI worker, vula.alerts.cti)              BCBCTI ──own Registry API (registry-cti)──► one TAR per incident
+ PARTNER / KOS-CERT: vula verify-cti ── TAXII manifest → TAR checksum on-chain → artifact hash → STIX object
 ```
 
 | Component | Where | Port (local) | Status |
@@ -44,6 +48,8 @@ one Compellio TAR, and an independent verifier checks everything straight from t
 | Verifier (`verify-log`, `reconcile`) + `vula` CLI | `packages/verifier`, `apps/cli` | | ✅ |
 | Attacks 1, 2, 4, 5, 8 | `attacks/` | | ✅ live e2e |
 | Dashboard | `apps/dashboard` | 3000 | ✅ |
+| BCBCTI hand-off: Compellio BCBCTI `v1.0.0-rc.3` (TAXII 2.1) + its own DCAP.Web + object storage (busybox httpd) | `infra/docker-compose.yml`, `apps/log-server/src/cti.ts` | 8090 (TAXII), 6061 (registry), 8091 (objects) | ✅ live |
+| `vula verify-cti` (partner view, BCBCTI's verification flow) | `packages/verifier/src/verify-cti.ts` | | ✅ live |
 
 `pnpm stack:up` starts the Node services (logs in `.run/`). Final demo: the chain becomes **Etherlink Shadownet**
 (chain id 127823). Supabase is already the cloud project.

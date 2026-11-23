@@ -39,3 +39,4 @@ export {
   type AuthAuditRow,
   type FieldChange,
 } from "./sources";
+export { VULA_STIX_NAMESPACE, uuidV5, alertToStixIncident, type AlertRecord, type StixIncident } from "./stix";
