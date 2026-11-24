@@ -15,6 +15,7 @@ import {
   dbLeafSource,
   dbPayloadSource,
   dbReconcileSource,
+  profileSource,
   storageBatchSource,
 } from "./sources";
 
@@ -55,7 +56,8 @@ export async function resolveTarId(sql: Sql, explicit?: string): Promise<{ tarId
 export async function runVerifyLog(opts: AuditOptions = {}): Promise<VerifyLogReport & { pinned: boolean; payloadSource: string }> {
   const sql = auditorDb();
   const { tarId, pinned } = await resolveTarId(sql, opts.tar);
-  const reader = createTarReader({ rpcUrl: opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545", tarId });
+  const rpcUrl = opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545";
+  const reader = createTarReader({ rpcUrl, tarId });
   await reader.assertChain();
   const payloads = opts.payloads === "db" ? dbPayloadSource(sql) : dataUriPayloadSource(reader);
   const batches =
@@ -73,6 +75,7 @@ export async function runVerifyLog(opts: AuditOptions = {}): Promise<VerifyLogRe
     leaves: dbLeafSource(sql),
     batches,
     trustedPublicKey: opts.pubkey,
+    profile: profileSource(rpcUrl, opts.payloads === "db" ? "db" : "datauri", sql),
     heartbeatGapMs: Number(process.env.HEARTBEAT_GAP_MS || 150_000),
   });
   return { ...report, pinned, payloadSource: payloads.name };
@@ -102,10 +105,12 @@ export async function runVerifyEvent(
 ): Promise<VerifyEventReport & { pinned: boolean; payloadSource: string; anchorTx: { txHash: string; explorer: string | null } | null }> {
   const sql = auditorDb();
   const { tarId, pinned } = await resolveTarId(sql, opts.tar);
-  const reader = createTarReader({ rpcUrl: opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545", tarId });
+  const rpcUrl = opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545";
+  const reader = createTarReader({ rpcUrl, tarId });
   await reader.assertChain();
   const payloads = opts.payloads === "db" ? dbPayloadSource(sql) : dataUriPayloadSource(reader);
-  const report = await verifyEvent({ chain: reader, payloads, leaves: dbLeafSource(sql), selector, trustedPublicKey: opts.pubkey });
+  const profile = profileSource(rpcUrl, opts.payloads === "db" ? "db" : "datauri", sql);
+  const report = await verifyEvent({ chain: reader, payloads, leaves: dbLeafSource(sql), selector, trustedPublicKey: opts.pubkey, profile });
   // Convenience only (explorer link): the tx hash comes from the untrusted DB; the proof never depends on it.
   let anchorTx: { txHash: string; explorer: string | null } | null = null;
   if (report.anchor) {

@@ -5,10 +5,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { sha256Hex } from "@vula/core";
 import type { Sql } from "@vula/db";
-import type { TarReader } from "@vula/compellio";
+import { createTarReader, type TarReader } from "@vula/compellio";
 import type { AppAuditRow, AuthAuditRow, VulaEvent } from "@vula/core";
 import { AUDITED_TABLES, type ReconcileSource } from "./reconcile";
-import type { BatchSource, Finding, LeafSource, PayloadSource, StoredLeaf } from "./types";
+import type { BatchSource, Finding, LeafSource, PayloadSource, ProfileSource, StoredLeaf } from "./types";
 
 export function dbLeafSource(sql: Sql): LeafSource {
   return {
@@ -59,6 +59,29 @@ export function dataUriPayloadSource(reader: TarReader): PayloadSource {
         }
       }
       return cache.get(version) ?? null;
+    },
+  };
+}
+
+/**
+ * The TAR profile (and its root schema) the checkpoints point to. Checksums come from the chain; the profile
+ * payload comes from its own dataUri (the log server) or from vula.config, both untrusted.
+ */
+export function profileSource(rpcUrl: string, from: "datauri" | "db", sql: Sql): ProfileSource {
+  const readers = new Map<string, TarReader>();
+  const chain = (tarId: string): TarReader => {
+    let r = readers.get(tarId);
+    if (!r) readers.set(tarId, (r = createTarReader({ rpcUrl, tarId })));
+    return r;
+  };
+  return {
+    name: from === "db" ? "vula.config (Supabase)" : "profile dataUri",
+    chain,
+    async getPayload(tarId, version) {
+      if (from === "datauri") return dataUriPayloadSource(chain(tarId)).getPayload(version);
+      const rows = await sql<{ value: { tarId?: string; payload?: unknown } }[]>`select value from vula.config where key = 'profile'`;
+      const p = rows[0]?.value;
+      return p?.tarId === tarId && version === 0 ? (p.payload ?? null) : null;
     },
   };
 }

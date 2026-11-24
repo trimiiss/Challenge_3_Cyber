@@ -1,7 +1,7 @@
 import { MerkleTree, inclusionProofSteps, toHex, type Hash } from "@vula/merkle";
 import { diffJson, eventLeafHash, jcs, parseEvent, type FieldChange, type VulaEvent } from "@vula/core";
 import { verifyCheckpoints, type AuthenticCheckpoint } from "./verify-log";
-import type { ChainSource, Finding, LeafSource, PayloadSource, StoredLeaf } from "./types";
+import type { ChainSource, Finding, LeafSource, PayloadSource, ProfileSource, StoredLeaf } from "./types";
 
 /** Which event to prove: a leaf index, a source id (optionally with its source), or a full event someone holds. */
 export type EventSelector =
@@ -15,6 +15,7 @@ export interface VerifyEventOptions {
   leaves: LeafSource;
   selector: EventSelector;
   trustedPublicKey?: string;
+  profile?: ProfileSource;
 }
 
 export interface ProofStep {

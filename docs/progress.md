@@ -1,5 +1,41 @@
 # Progress log
 
+## 2026-11-24: official Getting Started guide + TAR profile
+
+### Done
+- Read the BlockJump Getting Started guide v1.1 (now `docs/BlockJump_Getting_Started_Guide_Registry_API_BCBCTI_v1.1.pdf`):
+  `docs/compellio-notes.md` §8. It confirms our setup: self-hosted DCAP.Web, the
+  SHA-256(JCS) = getChecksum rule, Shadownet values, one registration at a time, and the BCBCTI flow.
+  **There's no Gateway / API key in the challenge**, so our self-hosted DCAP.Web is the intended setup.
+- **TAR profile** (the one gap the guide showed): checkpoints' `@context` is now the TAR id of a `VulaCheckpoint`
+  profile TAR, built on DCAP.Web's root asset schema TAR (README "Data initialization"). The log server registers both
+  before the first checkpoint, reuses them while they're on-chain (kept across `demo:reset`), serves them at
+  `/tar/0x…`, and shows them in `/v1/status`. `verify-log` / `verify-event` check the profile from the chain
+  (`profile_invalid`, `profile_changed`, `profile_updated`). The CLI prints the profile line; the dashboard overview
+  shows it with an explorer link. Details: compellio-notes §9. +14 tests (301 total), typecheck clean.
+
+### Not verified yet
+- **Live run.** Docker wasn't running, so the registration hasn't been tested against a real DCAP.Web yet.
+  `pnpm infra:up && pnpm demo:reset && pnpm stack:up`, wait for the first checkpoint
+  (`[profile] registered …` ×2 in the log-server output), then `pnpm vula verify-log` → `profile … ✅`.
+  An existing log TAR without a profile halts with `profile_missing`; `pnpm demo:reset` fixes it.
+
+## 2026-11-23 (2): anchoring cost + more adoption channels
+
+### Done
+- **Gas measured** (DCAP.Web's DCAPv2 bytecode, in-process Hardhat EVM, no network): `push` = 100,020 gas, TAR creation
+  = 1,451,292 gas. With Etherlink's fee formula (1 gwei floor + L1 inclusion fee) one checkpoint ≈ 0.00084 XTZ,
+  so one log ≈ 7.3 XTZ / month at 5 min, 36.5 XTZ at 1 min. Inclusion fee ≈ 90 %. In adoption plan §4.
+- Correction: heartbeats make every interval anchor, so "less when nothing happened" was wrong; removed.
+- Gateway pricing isn't public → §4 now gives the ceiling price per update for each tier; asked for in §9.
+- Adoption plan v0.3 §6: named ISO 27001 referral partners in Prishtina, Supabase Partner Catalog, Albania (Law
+  25/2024) as second market, Western Balkan Accelerator + Fortify Labs, KOS-CERT / GovCERT XK / UBT CERT.
+
+### Not done
+- README demo GIF: needs the full stack + dashboard + a browser; ~1 GB RAM free and Docker not running today.
+  Record it during the Shadownet run (dashboard Attack lab → attack 4 → red alert).
+- Check the gas cost against real Shadownet receipts once the wallet is funded.
+
 ## 2026-11-23: adoption targets + Auth audit switch
 
 ### Done

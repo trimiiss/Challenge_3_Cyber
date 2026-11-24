@@ -100,7 +100,7 @@ describe("checkpoint (§7.3)", () => {
 
   const cp = signCheckpoint(
     {
-      "@context": "urn:tar:vula:checkpoint:v1",
+      "@context": "urn:tar:eip155.31337:e7f1725e7734ce288f8367e1bb143e90bb3f0512",
       "@type": "VulaCheckpoint",
       logId: "test-log",
       seq: 0,

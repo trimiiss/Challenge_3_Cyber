@@ -1,16 +1,21 @@
 import type { Hex } from "viem";
 import { EMPTY_ROOT, fromHex, toHex } from "@vula/merkle";
 import {
-  CHECKPOINT_CONTEXT,
+  ASSET_SCHEMA_ROOT,
   CHECKPOINT_TYPE,
   checkpointChecksum,
+  checkpointProfile,
+  jcs,
+  jcsSha256,
   signCheckpoint,
   type CheckpointPayload,
+  type CheckpointProfile,
   type EventBatch,
   type Signer,
 } from "@vula/core";
 import {
   createTarReader,
+  explorerAddressUrl,
   explorerTxUrl,
   parseTarId,
   waitForTarId,
@@ -27,6 +32,32 @@ export interface TarConfig {
   createdAt: string;
 }
 
+/** The VulaCheckpoint TAR profile every checkpoint's `@context` points to (vula.config key `profile`). */
+export interface ProfileConfig {
+  tarId: string;
+  rootSchemaTarId: string;
+  chainId: number;
+  createdAt: string;
+  payload: CheckpointProfile;
+}
+
+/** Both profile TARs exist on the RPC's chain and hold exactly the expected documents. */
+async function profileOnChain(rpcUrl: string, p: ProfileConfig): Promise<boolean> {
+  if (jcs(p.payload) !== jcs(checkpointProfile(p.rootSchemaTarId))) return false;
+  for (const [tarId, doc] of [[p.rootSchemaTarId, ASSET_SCHEMA_ROOT], [p.tarId, p.payload]] as const) {
+    const r = createTarReader({ rpcUrl, tarId });
+    try {
+      await r.assertChain();
+    } catch (e) {
+      if (/^RPC is chain/.test((e as Error).message)) return false;
+      throw e;
+    }
+    if (!(await r.exists())) return false;
+    if ((await r.getChecksum(0)).toLowerCase() !== `0x${jcsSha256(doc)}`) return false;
+  }
+  return true;
+}
+
 /**
  * Checkpoint + anchor worker (CLAUDE.md §7.3):
  *  - only when there are new leaves; one Registry API request in flight at a time (DCAP.Web is not concurrency safe)
@@ -41,6 +72,10 @@ export class Anchorer {
   private lastCheckpointAt = 0;
   private reader: TarReader | null = null;
   tar: TarConfig | null = null;
+  profile: ProfileConfig | null = null;
+  private profileReady = false;
+  private profileRetryAt = 0;
+  private pendingRootTarId: string | null = null;
   checkpoints: CheckpointRow[] = [];
   halted: string | null = null;
   lastError: string | null = null;
@@ -65,6 +100,7 @@ export class Anchorer {
     this.epoch = epoch ?? new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15);
     if (!epoch) await this.deps.store.setConfig("epoch", this.epoch);
     this.tar = await this.deps.store.getConfig<TarConfig>("tar");
+    this.profile = await this.deps.store.getConfig<ProfileConfig>("profile");
     this.checkpoints = await this.deps.store.loadCheckpoints();
     if (this.tar) this.reader = createTarReader({ rpcUrl: this.deps.rpcUrl, tarId: this.tar.tarId });
   }
@@ -98,9 +134,68 @@ export class Anchorer {
     const size = this.deps.log.size;
     if (size === 0 || size <= (last?.tree_size ?? 0)) return; // nothing new: no checkpoint (heartbeats keep it moving)
     if (Date.now() - this.lastCheckpointAt < this.deps.intervalMs) return;
+    if (!(await this.ensureProfile())) return;
     this.lastCheckpointAt = Date.now();
     const row = await this.createCheckpoint(last, size);
     await this.anchor(row);
+  }
+
+  /**
+   * Compellio TAR Profiles: before the first checkpoint, register (1) DCAP.Web's root asset schema and (2) the
+   * VulaCheckpoint profile pointing to it, one POST at a time. Kept in vula.config and reused while both are still
+   * on-chain (they survive `pnpm demo:reset`); re-registered after the chain was wiped or switched.
+   */
+  private async ensureProfile(): Promise<boolean> {
+    if (this.profileReady) return true;
+    if (Date.now() < this.profileRetryAt) return false;
+    const { store, rpcUrl } = this.deps;
+    try {
+      if (this.profile && (await profileOnChain(rpcUrl, this.profile))) {
+        this.profileReady = true;
+        console.log(`[profile] checkpoints use TAR profile ${this.profile.tarId}`);
+        return true;
+      }
+      if (this.tar) {
+        // Its checkpoints already point at another (or no) profile: switching now would break the chain of @context.
+        this.halted = `TAR ${this.tar.tarId} has no valid TAR profile on this chain (${this.profile?.tarId ?? "created before TAR profiles"}): run pnpm demo:reset`;
+        console.error(`[profile] ${this.halted}. Checkpointing halted.`);
+        await store.alert("profile_missing", "critical", "The log's TAR profile is not on-chain", {
+          tarId: this.tar.tarId, profile: this.profile?.tarId ?? null,
+        });
+        return false;
+      }
+      const root = this.pendingRootTarId ?? (await this.registerFixed("root asset schema", ASSET_SCHEMA_ROOT));
+      this.pendingRootTarId = root;
+      const payload = checkpointProfile(root);
+      const tarId = await this.registerFixed("VulaCheckpoint profile", payload);
+      this.profile = { tarId, rootSchemaTarId: root, chainId: parseTarId(tarId).chainId, createdAt: new Date().toISOString(), payload };
+      await store.setConfig("profile", this.profile);
+      this.pendingRootTarId = null;
+      this.profileReady = true;
+      return true;
+    } catch (e) {
+      this.profileRetryAt = Date.now() + 30_000;
+      this.lastError = `TAR profile: ${(e as Error).message}`;
+      console.error(`[profile] ${this.lastError} (retry in 30 s)`);
+      return false;
+    }
+  }
+
+  /** POST a fixed document as a new TAR and wait until its checksum is on-chain. */
+  private async registerFixed(label: string, doc: object): Promise<string> {
+    const { registry, rpcUrl } = this.deps;
+    const rec = await registry.create(doc);
+    const tarId = rec.id ?? (await waitForTarId(registry, rec.receipt)).id;
+    const reader = createTarReader({ rpcUrl, tarId });
+    const checksum = `0x${jcsSha256(doc)}` as Hex;
+    const deadline = Date.now() + 180_000;
+    while (!(await reader.hasChecksum(checksum).catch(() => false))) {
+      if (Date.now() > deadline) throw new Error(`${label} ${tarId}: checksum not on-chain after 180 s`);
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+    const link = explorerAddressUrl(reader.chainId, reader.address);
+    console.log(`[profile] registered ${label} as TAR ${tarId} (receipt ${rec.receipt})${link ? `  ${link}` : ""}`);
+    return tarId;
   }
 
   private lastForeignCheck = 0;
@@ -137,7 +232,7 @@ export class Anchorer {
     const stored = await batches.put(batch, seq, this.epoch);
     const payload: CheckpointPayload = signCheckpoint(
       {
-        "@context": CHECKPOINT_CONTEXT,
+        "@context": this.profile!.tarId,
         "@type": CHECKPOINT_TYPE,
         logId,
         seq,

@@ -12,8 +12,8 @@ export {
 } from "./event";
 export { generateSigningKey, signerFromPkcs8, verifyEd25519, type Signer } from "./signing";
 export {
-  CHECKPOINT_CONTEXT,
   CHECKPOINT_TYPE,
+  TAR_ID_PATTERN,
   checkpointSchema,
   parseCheckpoint,
   checkpointSigningBytes,
@@ -39,4 +39,12 @@ export {
   type AuthAuditRow,
   type FieldChange,
 } from "./sources";
+export {
+  ASSET_SCHEMA_ROOT,
+  CHECKPOINT_PROFILE_ID,
+  checkpointProfile,
+  matchCheckpointProfile,
+  tarIdChainId,
+  type CheckpointProfile,
+} from "./profile";
 export { VULA_STIX_NAMESPACE, uuidV5, alertToStixIncident, type AlertRecord, type StixIncident } from "./stix";

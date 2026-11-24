@@ -15,6 +15,21 @@ export interface PayloadSource {
   getPayload(version: number): Promise<unknown | null>;
 }
 
+/** The TAR profile the checkpoints' `@context` points to (and its root schema): chain trusted, payloads not. */
+export interface ProfileSource {
+  readonly name: string;
+  chain(tarId: string): Pick<ChainSource, "totalVersions" | "getChecksum">;
+  getPayload(tarId: string, version: number): Promise<unknown | null>;
+}
+
+export interface ProfileReport {
+  tarId: string;
+  rootSchemaTarId: string | null;
+  versions: number;
+  ok: boolean;
+  source: string;
+}
+
 export interface StoredLeaf {
   index: number;
   leafHash: Uint8Array;
@@ -65,6 +80,8 @@ export interface VerifyLogReport {
   chainId: number;
   totalVersions: number;
   signerPublicKey: string | null;
+  /** The TAR profile of the checkpoints (null if not checked or no checkpoint could be read). */
+  profile: ProfileReport | null;
   anchoredTreeSize: number;
   storedLeaves: number;
   unanchoredLeaves: number;

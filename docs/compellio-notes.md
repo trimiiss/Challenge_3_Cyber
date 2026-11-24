@@ -137,6 +137,9 @@ Other quirks:
 
 ## 4. Compellio Gateway (hosted Registry API): from BCBCTI source, unverified until we have a key
 
+> **Not needed for the challenge (see §8).** The official Getting Started guide v1.1 uses self-hosted DCAP.Web, on the
+> local chain and on Etherlink Shadownet, and doesn't mention a Gateway key. `REGISTRY_MODE=gateway` stays as unused code.
+
 - Base URL `https://registry.api.gateway.compellio.com/` (BCBCTI default).
 - Headers: `X-Session-Key: <API key>` (required), `X-Blockchain: <network>` (optional), `X-Issuer-Domain: <domain>` (optional).
 - Same paths as DCAP.Web: `POST /api/v1/TAR`, `PUT /api/v1/TAR/{id}`, `GET /api/v1/TAR/{id}`, `GET /api/v1/TAR/tarId/{receipt}`.
@@ -150,7 +153,7 @@ Other quirks:
 
 ## 5. BCBCTI patterns we copy (patterns, not code)
 
-- **Payload shape:** `@context` (a profile URN / TAR id) + `@type`. Ours: `"@context": "urn:tar:vula:checkpoint:v1"`,
+- **Payload shape:** `@context` (a profile URN / TAR id) + `@type`. Ours: `"@context": "<VulaCheckpoint profile TAR id>"` (§9),
   `"@type": "VulaCheckpoint"`.
 - **Hash-and-point:** the TAR holds a pointer + SHA-256(JCS(object)); raw data stays in permissioned storage. Only
   roots and hashes go on-chain (GDPR / privacy story).
@@ -198,3 +201,58 @@ object (`x_vula_severity` critical → info) → ❌ `[artifact] … was altered
 Worth reporting to Compellio together with the PUT bug: the doc/implementation mismatch on the checksum rule and the
 hash encoding.
 
+
+## 8. Official BlockJump Getting Started guide v1.1 (`BlockJump_Getting_Started_Guide_Registry_API_BCBCTI_v1.1.pdf`, read 2026-11-24)
+
+Three pages: (1) Registry API, (2) BCBCTI for Challenge 3, (3) key concepts. What it confirms, and what's new to us:
+
+**Confirms what we built**
+- Registry = self-hosted DCAP.Web from `ghcr.io` (API :8080, Swagger `/swagger`, chain :8545). `POST` → **201** with
+  `id`, `version`, `checksum`, `data`; `PUT /{id}` → new version; `GET /version/{id}:1` → old versions stay readable.
+- TAR id = `urn:tar:eip155.<chain>:<contract>`; one smart contract per TAR.
+- Verification rule: `SHA-256(JCS(payload)) == getChecksum(version)`. For our checkpoints this holds as-is because we
+  send JCS text (§1.2: DCAP.Web really hashes the raw body). The guide doesn't mention the 0-based / 1-based offset (§1.3).
+- Live network = **Etherlink Shadownet**: `DCAP__BlockchainUrl=https://node.shadownet.etherlink.com`,
+  `DCAP__BlockchainId=127823`, faucet `shadownet.faucet.etherlink.com`, explorer `shadownet.explorer.etherlink.com` (§1.7).
+  Only these 3 env values change. Use a new challenge-only wallet; keep the key out of Git (we use `infra/.env.testnet`).
+- "Register one TAR at a time: parallel registrations are not supported." "Contract deployment failed" = chain
+  unreachable or wallet has no funds.
+- BCBCTI: `docker-compose.dcap.yaml` (BCBCTI :8080, Registry :6060, chain :8545, explorer :5100). `POST
+  /api/collections/default/objects` with `application/taxii+json;version=2.1` → **202** + status id →
+  `GET /api/status/{id}` → manifest entries carry `x_bcbcti_registry_tar_id`. Every object is registered under the
+  StixBundle profile. Resending an id with new content → new TAR version. **No authentication: keep it private.**
+  Matches §7; our compose remaps ports (TAXII :8090, `registry-cti` :6061) so both stacks run side by side.
+
+**New to us**
+- **No Gateway / API key in the challenge path.** Everything runs on self-hosted DCAP.Web. Our DCAP.Web on Shadownet
+  is the sanctioned setup. For BCBCTI on testnet the only option left is a second funded wallet (`DCAP_CTI_PRIVATE_KEY`).
+- **TAR Profiles.** "Any JSON is accepted, but in the Compellio model a record points to a profile that describes its
+  type", through its `@context`. A profile is itself a TAR. DCAP.Web README → *Data initialization*: (1) POST a root
+  asset-schema JSON-LD document → TAR A; (2) POST the domain profile whose `@context` is `["<TAR A id>", {…terms…}]`
+  → TAR B; (3) records use `"@context": "<TAR B id>"`. **Built (2026-11-24), see §9.**
+- **Explorer UI:** `compellio/dcap-asset-explorer` is Compellio's TAR browser (separate from the Otterscan block explorer
+  on :5100). Not checked yet.
+
+## 9. Our TAR profile (built 2026-11-24)
+
+Follows DCAP.Web README *Data initialization*, with three TARs on the same chain:
+
+```
+root asset schema TAR  ◄── @context[0] ──  VulaCheckpoint profile TAR  ◄── @context ──  every checkpoint (log TAR versions)
+(README doc, verbatim)                     (packages/core/src/profile.ts)
+```
+
+- **Registration:** before its first checkpoint the log server POSTs the root asset schema, then the profile
+  (`["<root TAR id>", {terms}]`, `@id` `urn:vula:asset_profile:checkpoint:v1`, one JSON-LD term per checkpoint field).
+  One POST at a time, each confirmed on-chain (`hasChecksum`). Saved in `vula.config` key `profile`. On startup the log
+  server reuses it if both TARs still hold the expected checksums on the RPC's chain, and re-registers otherwise (wiped
+  Hardhat chain, local ↔ testnet switch). `pnpm demo:reset` keeps it, so a reset costs no extra contract deployments.
+  A log TAR whose profile is gone halts the log server with a `profile_missing` alert (`pnpm demo:reset` fixes it).
+- **Payload resolution:** DCAP.Web gives all three TARs the same `dataUri` prefix, so the log server's `/tar/0x{address}`
+  serves the profile and the root schema too.
+- **Verification (`verify-log`, `verify-event`, TAR version 0):** the profile TAR is on the log's chain and exists; its
+  payload (untrusted copy) re-hashes to `getChecksum(0)` and is exactly our profile document; its `@context[0]` TAR holds
+  SHA-256(JCS(root asset schema)). Both documents are fixed in `@vula/core`, so the auditor needs nothing but the chain
+  to check them. Every later checkpoint must keep the same `@context` (`profile_changed`). More than one profile version
+  on-chain → `profile_updated` warning.
+- **Cost:** two extra TAR deployments per chain (~1.45 M gas each, measured for TAR creation), once.

@@ -37,6 +37,12 @@ export function createTarReader(opts: { rpcUrl: string; tarId: string }) {
       }
     },
 
+    /** Is there a contract at the TAR's address (false after a local chain was wiped, or on another chain)? */
+    async exists(): Promise<boolean> {
+      const code = await client.getCode({ address });
+      return !!code && code !== "0x";
+    },
+
     blockNumber(): Promise<bigint> {
       return client.getBlockNumber();
     },

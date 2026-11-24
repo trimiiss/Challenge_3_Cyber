@@ -174,7 +174,7 @@ Tests: empty tree root = SHA256(""), known RFC 6962 test vectors (port them from
 ### 7.3 Checkpoint (= TAR payload, one TAR version per checkpoint)
 ```json
 {
-  "@context": "urn:tar:vula:checkpoint:v1",
+  "@context": "urn:tar:eip155.<chain>:<VulaCheckpoint TAR profile contract>",
   "@type": "VulaCheckpoint",
   "logId": "uibm-grades-prod",
   "seq": 42,
@@ -189,6 +189,7 @@ Tests: empty tree root = SHA256(""), known RFC 6962 test vectors (port them from
   "signature": "base64 Ed25519 over JCS(payload without signature)"
 }
 ```
+- `@context` = TAR id of the VulaCheckpoint **TAR profile** (Compellio model, DCAP.Web README "Data initialization"): registered once per chain before the first checkpoint, on top of DCAP's root asset schema TAR. Details: `docs/compellio-notes.md` §9.
 - First checkpoint: `POST` creates the TAR; store the TAR id in `vula.config`. Every next checkpoint: `PUT` → new version.
 - Checkpoint only when there are new leaves, but emit a **heartbeat leaf** every minute so silence is detectable (gap = alert).
 - Interval: 1 min locally, 5 min on testnet (configurable).

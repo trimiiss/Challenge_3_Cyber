@@ -12,6 +12,7 @@ interface Overview {
   checkpoints: { total: number; anchored: number; pending: number };
   lastAnchored: { seq: number; tree_size: number; root: string; tar_version: number; tx_hash: string; anchored_at: string; explorer: string | null } | null;
   tar: { tarId: string; chainId: number; address: string; explorer: string | null; createdAt: string } | null;
+  profile: { tarId: string; rootSchemaTarId: string; address: string; explorer: string | null } | null;
   alerts: { critical: number; warning: number };
   logServer: { treeSize: number; unanchoredLeaves: number; halted: string | null; pending: { seq: number; attempts: number; error: string } | null; heartbeat: { gapOpen: boolean; lastHeartbeatAt: string | null } } | null;
   chainRpc: string;
@@ -62,6 +63,10 @@ export default function OverviewPage() {
               <Field label="Latest tx">
                 {data.lastAnchored?.explorer ? <a className="text-brand hover:underline" href={data.lastAnchored.explorer} target="_blank" rel="noreferrer"><Mono>{short(data.lastAnchored.tx_hash, 14, 8)}</Mono></a> : <Mono>{short(data.lastAnchored?.tx_hash, 14, 8)}</Mono>}
               </Field>
+              <Field label="TAR profile (@context)">
+                {data.profile?.explorer ? <a className="inline-flex items-center gap-1 text-brand hover:underline" href={data.profile.explorer} target="_blank" rel="noreferrer" title={data.profile.tarId}><Mono>VulaCheckpoint · {short(data.profile.address, 10, 6)}</Mono><ExternalLink className="h-3 w-3" /></a> : <Mono>{data.profile ? `VulaCheckpoint · ${short(data.profile.address, 10, 6)}` : "registered before the first checkpoint"}</Mono>}
+              </Field>
+              <Field label="Profile root schema"><Mono>{short(data.profile?.rootSchemaTarId, 24, 8)}</Mono></Field>
             </CardContent>
           </Card>
 

@@ -42,6 +42,10 @@ function printVerifyLog(r: VerifyLogReport & { pinned: boolean; payloadSource: s
   console.log("\nVula verify-log  (trust anchor: the chain)");
   console.log(`  TAR       ${r.tarId}  (chain ${r.chainId}, ${r.totalVersions} versions)${r.pinned ? "" : "  ⚠️  id read from vula.config (untrusted): pin it with --tar / VULA_TAR_ID"}`);
   console.log(`  signer    ${r.signerPublicKey ?? "?"}`);
+  if (r.profile) {
+    console.log(`  profile   ${r.profile.tarId}  ${r.profile.ok ? "✅ VulaCheckpoint TAR profile" : "❌ not a valid VulaCheckpoint TAR profile"}`);
+    if (r.profile.rootSchemaTarId) console.log(`            root asset schema ${r.profile.rootSchemaTarId}`);
+  }
   console.log(`  payloads  ${r.payloadSource}`);
   console.log(`  leaves    ${r.storedLeaves} stored, ${r.anchoredTreeSize} anchored, ${r.unanchoredLeaves} pending\n`);
   for (const c of r.checkpoints) {

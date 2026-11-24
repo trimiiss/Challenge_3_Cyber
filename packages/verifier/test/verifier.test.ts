@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_ROOT, MerkleTree, fromHex, toHex, verifyInclusion } from "@vula/merkle";
 import {
+  ASSET_SCHEMA_ROOT,
   appAuditEvent,
   batchBytes,
+  checkpointProfile,
+  jcsSha256,
   batchSha256,
   checkpointChecksum,
   eventLeafHash,
@@ -16,9 +19,35 @@ import {
   type VulaEvent,
 } from "@vula/core";
 import { reconcile, verifyEvent, verifyLog, type ReconcileSource } from "../src/index";
-import type { BatchSource, ChainSource, LeafSource, PayloadSource, StoredLeaf } from "../src/types";
+import type { BatchSource, ChainSource, LeafSource, PayloadSource, ProfileSource, StoredLeaf } from "../src/types";
 
 // ============================================================ test world
+const ROOT_TAR = "urn:tar:eip155.31337:5fbdb2315678afecb367f032d93f642f64180aa3";
+const PROFILE_TAR = "urn:tar:eip155.31337:e7f1725e7734ce288f8367e1bb143e90bb3f0512";
+const LOG_TAR = "urn:tar:eip155.31337:9fe46736679d2d9a65f0992f2272de9f3c7fa6e0";
+
+/** A chain holding the root asset schema + VulaCheckpoint profile TARs (checksums), and an untrusted payload store. */
+function profileWorld(over: { profilePayload?: unknown; profileChecksum?: string; rootChecksum?: string; profileVersions?: number } = {}) {
+  const profile = checkpointProfile(ROOT_TAR);
+  const checksums: Record<string, string[]> = {
+    [ROOT_TAR]: [over.rootChecksum ?? `0x${jcsSha256(ASSET_SCHEMA_ROOT)}`],
+    [PROFILE_TAR]: Array.from({ length: over.profileVersions ?? 1 }, () => over.profileChecksum ?? `0x${jcsSha256(profile)}`),
+  };
+  const src: ProfileSource = {
+    name: "mem profile",
+    chain: (tarId) => ({
+      totalVersions: async () => checksums[tarId]?.length ?? 0,
+      getChecksum: async (v) => {
+        const c = checksums[tarId]?.[v];
+        if (!c) throw new Error("no contract");
+        return c;
+      },
+    }),
+    getPayload: async (tarId, v) => (tarId === PROFILE_TAR && v === 0 ? (over.profilePayload ?? profile) : null),
+  };
+  return src;
+}
+
 const STUDENT = "aaaaaaaa-0000-4000-8000-000000000001";
 const COURSE = "cccccccc-0000-4000-8000-000000000001";
 const GRADE = "99999999-0000-4000-8000-000000000001";
@@ -56,7 +85,7 @@ function buildWorld(opts: { heartbeatEveryMin?: number; gapAfter?: number } = {}
     checkpoints.push(
       signCheckpoint(
         {
-          "@context": "urn:tar:vula:checkpoint:v1", "@type": "VulaCheckpoint", logId: "t", seq,
+          "@context": PROFILE_TAR, "@type": "VulaCheckpoint", logId: "t", seq,
           treeSize: size, rootHash: toHex(tree.root(size)),
           prevTreeSize: prevSize, prevRootHash: prevSize ? toHex(tree.root(prevSize)) : toHex(EMPTY_ROOT),
           consistencyProof: prevSize ? tree.consistencyProof(prevSize, size).map(toHex) : [],
@@ -78,7 +107,7 @@ type World = ReturnType<typeof buildWorld>;
 
 function sources(w: World) {
   const chain: ChainSource = {
-    tarId: "urn:tar:eip155.31337:5fbdb2315678afecb367f032d93f642f64180aa3",
+    tarId: LOG_TAR,
     chainId: 31337,
     totalVersions: async () => w.chainChecksums.length,
     getChecksum: async (v) => w.chainChecksums[v]!,
@@ -90,7 +119,7 @@ function sources(w: World) {
 }
 
 const run = (w: World, extra: Partial<Parameters<typeof verifyLog>[0]> = {}) =>
-  verifyLog({ ...sources(w), now: new Date(Date.UTC(2026, 10, 19, 10, 12)), ...extra });
+  verifyLog({ ...sources(w), profile: profileWorld(), now: new Date(Date.UTC(2026, 10, 19, 10, 12)), ...extra });
 
 const codes = (r: { findings: { code: string; severity: string }[] }) =>
   r.findings.filter((f) => f.severity !== "info").map((f) => f.code);
@@ -105,6 +134,8 @@ describe("verify-log", () => {
     expect(r.checkpoints.every((c) => c.ok)).toBe(true);
     expect(r.anchoredTreeSize).toBe(r.storedLeaves);
     expect(r.firstBroken).toBeNull();
+    expect(r.profile).toMatchObject({ tarId: PROFILE_TAR, rootSchemaTarId: ROOT_TAR, versions: 1, ok: true });
+    expect(r.checkpoints[0]!.checks.find((c) => c.name.startsWith("@context"))?.ok).toBe(true);
   });
 
   it("attack 4: edited leaf (hash recomputed to look consistent) -> root mismatch at the covering checkpoint, pinpointed", async () => {
@@ -172,7 +203,7 @@ describe("verify-log", () => {
     const batch: EventBatch = { "@type": "VulaEventBatch", logId: "t", fromIndex: prev.treeSize, toIndex: size - 1, events: extra };
     const forged = signCheckpoint(
       {
-        "@context": "urn:tar:vula:checkpoint:v1", "@type": "VulaCheckpoint", logId: "t", seq: 3, treeSize: size,
+        "@context": PROFILE_TAR, "@type": "VulaCheckpoint", logId: "t", seq: 3, treeSize: size,
         rootHash: toHex(ft.root()), prevTreeSize: prev.treeSize, prevRootHash: prev.rootHash,
         consistencyProof: ft.consistencyProof(prev.treeSize, size).map(toHex),
         batch: { uri: "mem://batch/3", sha256: batchSha256(batch), fromIndex: prev.treeSize, toIndex: size - 1 },
@@ -218,6 +249,67 @@ describe("verify-log", () => {
     w.leaves.splice(1, 1); // force pinpointing
     const r = await run(w);
     expect(codes(r)).toContain("batch_tampered");
+  });
+});
+
+// ============================================================ TAR profile (@context)
+describe("verify-log: TAR profile", () => {
+  /** Re-signs checkpoint `v` with another @context and re-anchors it (as a key holder could). */
+  function withContext(w: World, v: number, context: string) {
+    const { signature: _s, signer: _k, ...unsigned } = w.checkpoints[v]!;
+    const cp = signCheckpoint({ ...unsigned, "@context": context }, w.signer);
+    w.payloadStore[v] = cp;
+    w.chainChecksums[v] = `0x${checkpointChecksum(cp)}`;
+    return w;
+  }
+
+  it("profile payload altered in the untrusted store -> does not match its on-chain checksum", async () => {
+    const tampered = { ...checkpointProfile(ROOT_TAR), "schema:description": "anything goes" };
+    const r = await run(buildWorld(), { profile: { ...profileWorld(), getPayload: async () => tampered } });
+    expect(codes(r)).toContain("profile_invalid");
+    expect(r.profile?.ok).toBe(false);
+    expect(r.firstBroken?.version).toBe(0);
+    expect(r.ok).toBe(false);
+  });
+
+  it("@context points to a TAR that is not the Vula checkpoint profile -> rejected", async () => {
+    const other = { "@context": "urn:tar:...", "@type": "stixBundle" };
+    const r = await run(buildWorld(), { profile: profileWorld({ profilePayload: other, profileChecksum: `0x${jcsSha256(other)}` }) });
+    expect(r.findings.find((f) => f.code === "profile_invalid")?.message).toMatch(/not the Vula checkpoint profile/);
+  });
+
+  it("profile whose root TAR does not hold DCAP's root asset schema -> rejected", async () => {
+    const r = await run(buildWorld(), { profile: profileWorld({ rootChecksum: `0x${"00".repeat(32)}` }) });
+    expect(r.findings.find((f) => f.code === "profile_invalid")?.message).toMatch(/root asset schema/);
+  });
+
+  it("@context TAR does not exist on-chain -> rejected", async () => {
+    const r = await run(withContext(buildWorld(), 0, "urn:tar:eip155.31337:" + "ab".repeat(20)));
+    expect(r.findings.find((f) => f.code === "profile_invalid")?.message).toMatch(/no contract/);
+  });
+
+  it("@context TAR on another chain -> rejected", async () => {
+    const r = await run(withContext(buildWorld(), 0, "urn:tar:eip155.127823:e7f1725e7734ce288f8367e1bb143e90bb3f0512"));
+    expect(r.findings.find((f) => f.code === "profile_invalid")?.message).toMatch(/not a TAR on chain 31337/);
+  });
+
+  it("a later checkpoint switching to another profile -> profile_changed at that version", async () => {
+    const r = await run(withContext(buildWorld(), 2, ROOT_TAR));
+    expect(codes(r)).toContain("profile_changed");
+    expect(r.firstBroken?.version).toBe(2);
+    expect(r.checkpoints.slice(0, 2).every((c) => c.ok)).toBe(true);
+  });
+
+  it("a profile updated after registration is reported as a warning", async () => {
+    const r = await run(buildWorld(), { profile: profileWorld({ profileVersions: 2 }) });
+    expect(r.ok).toBe(true);
+    expect(r.findings.find((f) => f.code === "profile_updated")?.severity).toBe("warning");
+  });
+
+  it("without a profile source only the @context form is checked", async () => {
+    const r = await verifyLog({ ...sources(buildWorld()), now: new Date(Date.UTC(2026, 10, 19, 10, 12)) });
+    expect(r.ok).toBe(true);
+    expect(r.profile).toBeNull();
   });
 });
 

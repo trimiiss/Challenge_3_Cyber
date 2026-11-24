@@ -3,16 +3,21 @@ import { jcs, jcsSha256, sha256Hex } from "./jcs";
 import { verifyEd25519, type Signer } from "./signing";
 import type { VulaEvent } from "./event";
 
-/** CLAUDE.md §7.3. One checkpoint = one TAR version; payload.seq === on-chain version index. */
-export const CHECKPOINT_CONTEXT = "urn:tar:vula:checkpoint:v1";
+/**
+ * CLAUDE.md §7.3. One checkpoint = one TAR version; payload.seq === on-chain version index.
+ * `@context` = the TAR id of the VulaCheckpoint TAR profile (profile.ts), as in Compellio's TAR model.
+ */
 export const CHECKPOINT_TYPE = "VulaCheckpoint";
+
+/** urn:tar:eip155.{chainId}:{contract address}, the form DCAP.Web returns (0x optional). */
+export const TAR_ID_PATTERN = /^urn:tar:eip155\.\d+:(?:0x)?[0-9a-fA-F]{40}$/;
 
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 const count = z.number().int().nonnegative();
 
 export const checkpointSchema = z
   .object({
-    "@context": z.literal(CHECKPOINT_CONTEXT),
+    "@context": z.string().regex(TAR_ID_PATTERN, "must be the TAR id of the VulaCheckpoint profile"),
     "@type": z.literal(CHECKPOINT_TYPE),
     logId: z.string().min(1),
     seq: count,

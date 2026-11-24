@@ -11,7 +11,9 @@ export async function resetDemo(sql: Sql): Promise<string> {
     const courseOwner = new Map(owners.map((o) => [o.code, o.professor_id]));
     if (!courseOwner.get("CS101") || !courseOwner.get("CS310")) throw new Error("courses missing: run supabase/seed.sql first");
 
-    await tx`truncate vula.leaves, vula.checkpoints, vula.collector_state, vula.alerts, vula.config`;
+    await tx`truncate vula.leaves, vula.checkpoints, vula.collector_state, vula.alerts`;
+    // Keep the TAR profile: the log server reuses it while it is still on-chain (saves two contract deployments).
+    await tx`delete from vula.config where key <> 'profile'`;
     await tx`delete from app.grades`;
     await tx`delete from app.logins`;
     await tx`delete from app.courses`;

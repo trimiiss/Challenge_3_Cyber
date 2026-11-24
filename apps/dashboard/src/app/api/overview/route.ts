@@ -27,6 +27,8 @@ export async function GET(req: Request) {
     from vula.checkpoints where status = 'anchored' order by seq desc limit 1`;
   const [tarRow] = await sql<{ value: { tarId: string; chainId: number; createdAt: string } }[]>`
     select value from vula.config where key = 'tar'`;
+  const [profileRow] = await sql<{ value: { tarId: string; rootSchemaTarId: string; chainId: number } }[]>`
+    select value from vula.config where key = 'profile'`;
   const [alerts] = await sql<{ critical: number; warning: number }[]>`
     select count(*) filter (where severity = 'critical')::int as critical,
            count(*) filter (where severity = 'warning')::int as warning
@@ -49,6 +51,13 @@ export async function GET(req: Request) {
       ? { ...last, explorer: tar && last.tx_hash ? explorerTxUrl(tar.chainId, last.tx_hash) : null }
       : null,
     tar: tar ? { ...tar, address, explorer: address ? explorerAddressUrl(tar.chainId, address) : null } : null,
+    profile: profileRow
+      ? (() => {
+          const p = profileRow.value;
+          const a = parseTarId(p.tarId).address;
+          return { tarId: p.tarId, rootSchemaTarId: p.rootSchemaTarId, address: a, explorer: explorerAddressUrl(p.chainId, a) };
+        })()
+      : null,
     alerts,
     logServer,
     chainRpc: process.env.CHAIN_RPC_URL || "http://localhost:8545",

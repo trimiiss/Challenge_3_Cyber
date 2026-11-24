@@ -26,6 +26,7 @@ const h = { authorization: `Bearer ${data.session.access_token}` };
 const get = async (path: string): Promise<any> => (await fetch(`${BASE}${path}`, { headers: h })).json();
 const ov = await get("/api/overview");
 check("overview", typeof ov.counts?.leaves === "number", `${ov.counts?.leaves} events, TAR ${ov.tar?.tarId}, last anchored #${ov.lastAnchored?.seq}`);
+check("overview: TAR profile", typeof ov.profile?.tarId === "string", `@context -> ${ov.profile?.tarId}`);
 const cps = await get("/api/checkpoints");
 check("checkpoints", Array.isArray(cps) && cps.length > 0, `${cps.length} rows, latest #${cps[0]?.seq} ${cps[0]?.status}`);
 const alerts = await get("/api/alerts");
@@ -36,7 +37,8 @@ const events = await get("/api/events?heartbeats=0");
 check("live events", Array.isArray(events.events) && events.events.length > 0,
   `${events.events?.length} events, ${events.anchoredTreeSize} sealed, newest leaf #${events.events?.[0]?.index}`);
 const sealed = events.events?.find((e: { sealedIn: unknown }) => e.sealedIn);
-const proof = await (await fetch(`${BASE}/api/verify-event`, { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ id: String(sealed?.index ?? 0) }) })).json();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const proof: any = await (await fetch(`${BASE}/api/verify-event`, { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ id: String(sealed?.index ?? 0) }) })).json();
 check("verify-event (inclusion proof vs chain)", proof.ok === true && proof.status === "included",
   `leaf ${proof.index}: ${proof.steps?.length} hashes -> TAR v${proof.anchor?.version}`);
 for (const path of ["/", "/events", "/checkpoints", "/verify", "/alerts", "/attacks"]) {

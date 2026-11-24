@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { toHex } from "@vula/merkle";
-import { parseEvent } from "@vula/core";
+import { ASSET_SCHEMA_ROOT, parseEvent } from "@vula/core";
 import { explorerAddressUrl, explorerTxUrl, parseTarId } from "@vula/compellio";
 import type { LogService } from "./log";
 import type { Anchorer } from "./anchor";
@@ -83,6 +83,11 @@ export function buildServer(deps: {
         ...tar,
         explorer: explorerAddressUrl(tar.chainId, parseTarId(tar.tarId).address),
       },
+      profile: anchorer.profile && {
+        tarId: anchorer.profile.tarId,
+        rootSchemaTarId: anchorer.profile.rootSchemaTarId,
+        explorer: explorerAddressUrl(anchorer.profile.chainId, parseTarId(anchorer.profile.tarId).address),
+      },
       lastAnchored: last && {
         seq: last.seq,
         treeSize: last.tree_size,
@@ -103,8 +108,17 @@ export function buildServer(deps: {
   // all anchored payloads, straight from the checkpoint store (vula.checkpoints). Whoever controls that table
   // controls what is served here: verifiers treat it as untrusted and re-hash every payload against the chain.
   app.get<{ Params: { address: string } }>("/tar/:address", async (req, reply) => {
+    const address = req.params.address.toLowerCase();
+    // The TAR profile and its root asset schema (DCAP.Web gives every TAR it registers the same dataUri prefix).
+    const profile = anchorer.profile;
+    if (profile && parseTarId(profile.tarId).address === address) {
+      return { tarId: profile.tarId, versions: [{ version: 0, payload: profile.payload }] };
+    }
+    if (profile && parseTarId(profile.rootSchemaTarId).address === address) {
+      return { tarId: profile.rootSchemaTarId, versions: [{ version: 0, payload: ASSET_SCHEMA_ROOT }] };
+    }
     const tar = anchorer.tar;
-    if (!tar || parseTarId(tar.tarId).address !== req.params.address.toLowerCase()) {
+    if (!tar || parseTarId(tar.tarId).address !== address) {
       return reply.code(404).send({ error: "unknown TAR" });
     }
     const rows = await deps.loadCheckpoints();

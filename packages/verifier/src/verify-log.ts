@@ -21,8 +21,11 @@ import type {
   Finding,
   LeafSource,
   PayloadSource,
+  ProfileReport,
+  ProfileSource,
   VerifyLogReport,
 } from "./types";
+import { verifyProfile } from "./verify-profile";
 
 export interface VerifyLogOptions {
   chain: ChainSource;
@@ -32,6 +35,8 @@ export interface VerifyLogOptions {
   batches?: BatchSource;
   /** Pin the checkpoint signing key (base64). Default: trust-on-first-use of TAR version 0's key. */
   trustedPublicKey?: string;
+  /** Checks the TAR profile the checkpoints' `@context` points to. Without it only its form is checked. */
+  profile?: ProfileSource;
   /** Heartbeat gap that counts as silence (default 150 s). */
   heartbeatGapMs?: number;
   now?: Date;
@@ -47,8 +52,7 @@ const LAYER = "log-vs-chain" as const;
 export async function verifyLog(opts: VerifyLogOptions): Promise<VerifyLogReport> {
   const gapMs = opts.heartbeatGapMs ?? 150_000;
   // ------------------------------------------------ A. chain -> checkpoint payloads
-  const { total, results, authentic, findings, pinnedKey } = await verifyCheckpoints(opts);
-
+  const { total, results, authentic, findings, pinnedKey, profile } = await verifyCheckpoints(opts);
 
   // ------------------------------------------------ B. stored leaves -> anchored roots
   const stored = (await opts.leaves.getLeaves()).sort((a, b) => a.index - b.index);
@@ -176,6 +180,7 @@ export async function verifyLog(opts: VerifyLogOptions): Promise<VerifyLogReport
     chainId: opts.chain.chainId,
     totalVersions: total,
     signerPublicKey: pinnedKey,
+    profile,
     anchoredTreeSize,
     storedLeaves: stored.length,
     unanchoredLeaves: unanchored,
@@ -198,12 +203,13 @@ export interface AuthenticCheckpoint {
  * of checkpoints that are authentic (checksum, signature, key, seq, linkage, consistency). Stops at the first
  * broken version: nothing after it can be trusted to chain from it.
  */
-export async function verifyCheckpoints(opts: Pick<VerifyLogOptions, "chain" | "payloads" | "trustedPublicKey">): Promise<{
+export async function verifyCheckpoints(opts: Pick<VerifyLogOptions, "chain" | "payloads" | "trustedPublicKey" | "profile">): Promise<{
   total: number;
   results: CheckpointResult[];
   authentic: AuthenticCheckpoint[];
   findings: Finding[];
   pinnedKey: string | null;
+  profile: ProfileReport | null;
 }> {
   const findings: Finding[] = [];
   const results: CheckpointResult[] = [];
@@ -211,6 +217,7 @@ export async function verifyCheckpoints(opts: Pick<VerifyLogOptions, "chain" | "
   const total = await opts.chain.totalVersions();
   let prev: CheckpointPayload | null = null;
   let pinnedKey = opts.trustedPublicKey ?? null;
+  let profile: ProfileReport | null = null;
 
   for (let v = 0; v < total; v++) {
     const result: CheckpointResult = { version: v, ok: true, checks: [] };
@@ -247,6 +254,20 @@ export async function verifyCheckpoints(opts: Pick<VerifyLogOptions, "chain" | "
       break;
     }
     Object.assign(result, { seq: p.seq, treeSize: p.treeSize, rootHash: p.rootHash, issuedAt: p.issuedAt });
+
+    // Compellio TAR model: @context = the TAR profile describing the record type. Checked on-chain once (v0),
+    // then every later checkpoint must keep pointing at the same profile.
+    if (!prev) {
+      if (opts.profile) {
+        const pr = await verifyProfile(p["@context"], opts.chain.chainId, opts.profile);
+        profile = pr.report;
+        findings.push(...pr.findings);
+        const bad = pr.checks.find((c) => !c.ok);
+        check("@context = registered VulaCheckpoint TAR profile", !bad, bad ? `${bad.name}: ${bad.detail ?? "failed"}` : p["@context"]);
+      }
+    } else if (!check("@context = same TAR profile as version 0", p["@context"] === authentic[0]?.payload["@context"], p["@context"])) {
+      fail("profile_changed", `TAR version ${v} points to another TAR profile (${p["@context"]})`);
+    }
 
     pinnedKey ??= p.signer.publicKey;
     const sigOk = check("Ed25519 signature valid", verifyCheckpointSignature(p));
@@ -285,7 +306,7 @@ export async function verifyCheckpoints(opts: Pick<VerifyLogOptions, "chain" | "
     authentic.push({ version: v, payload: p, result });
     prev = p;
   }
-  return { total, results, authentic, findings, pinnedKey };
+  return { total, results, authentic, findings, pinnedKey, profile };
 }
 
 export function describe(e: VulaEvent): string {
