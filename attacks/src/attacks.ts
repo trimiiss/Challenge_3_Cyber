@@ -223,6 +223,9 @@ export const ATTACKS: Attack[] = [
           prevRoot = c.payload.rootHash;
           continue;
         }
+        // A checkpoint larger than the stored log (e.g. the foreign one from attack 7, whose extra leaves were never
+        // stored) cannot be recomputed from vula.leaves: stop there.
+        if (c.tree_size > tree.size) break;
         const p: CheckpointPayload = {
           ...c.payload,
           rootHash: toHex(tree.root(c.tree_size)),

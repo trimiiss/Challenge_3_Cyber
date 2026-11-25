@@ -66,6 +66,9 @@ one Compellio TAR, and an independent verifier checks everything straight from t
 
 ## How a checkpoint reaches the chain (as the real Registry API behaves)
 
+0. **TAR profile (Compellio model):** once per chain, before the first checkpoint, `POST` DCAP's root asset schema
+   and then the `VulaCheckpoint` profile that points to it. Every checkpoint's `@context` is the profile's TAR id;
+   `verify-log` checks both TARs from the chain (see `compellio-notes.md` §9). Reused across `pnpm demo:reset`.
 1. **First checkpoint:** `POST /api/v1/TAR` with the JCS text of the payload. DCAP.Web deploys one DCAPv2 contract
    and returns the TAR id `urn:tar:eip155.{chain}:{address}`. We store it in `vula.config`. This TAR is the log's
    permanent identity.

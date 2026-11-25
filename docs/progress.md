@@ -14,11 +14,24 @@
   (`profile_invalid`, `profile_changed`, `profile_updated`). The CLI prints the profile line; the dashboard overview
   shows it with an explorer link. Details: compellio-notes §9. +14 tests (301 total), typecheck clean.
 
-### Not verified yet
-- **Live run.** Docker wasn't running, so the registration hasn't been tested against a real DCAP.Web yet.
-  `pnpm infra:up && pnpm demo:reset && pnpm stack:up`, wait for the first checkpoint
-  (`[profile] registered …` ×2 in the log-server output), then `pnpm vula verify-log` → `profile … ✅`.
-  An existing log TAR without a profile halts with `profile_missing`; `pnpm demo:reset` fixes it.
+### Full delivery check: verified live (2026-11-24, local Hardhat 31337 + DCAP.Web v0.0.5 + BCBCTI + Supabase cloud)
+- `pnpm test` ✅ 301 · `pnpm typecheck` ✅ (root + dashboard) · `pnpm m0:smoke` ✅ (after `pnpm infra:reset`; see below)
+- Profile live: root schema TAR → profile TAR → log TAR v0 anchored. After `demo:reset` the log server reused the
+  profile ("checkpoints use TAR profile …"), so no extra deployments.
+- `vula verify-log` ✅ (profile ✅, payloads via `dataUri` and via `--payloads db`), `reconcile` ✅, `verify-event` ✅
+- `pnpm dashboard:smoke` ✅ 15/15 (needed a rebuild: the old `.next` bundle still had the old `@context` schema)
+- `pnpm realtime:smoke` ✅ 2 alerts pushed to the browser in ~3.9 s · `pnpm vula verify-cti` ✅ 3 incidents
+- `pnpm e2e:attacks` ✅ attacks 2, 1, 4, 5, 8 · `pnpm e2e:stretch` ✅ verify-event, attacks 7, 6, 3
+- **Fixed:** attack 6 crashed (`RangeError size=53 out of range`) when run right after attack 7 and before a new
+  heartbeat landed. The forged checkpoint is larger than the stored log, so it now stops there. Also hit from the
+  Attack lab with the same 7 → 6 order.
+- Gotchas seen: (1) after Docker restarts the Hardhat chain, DCAP.Web's volume still remembers old TARs at the same
+  addresses (REST version 15 for a new TAR) → `pnpm infra:reset && pnpm infra:up`, then `pnpm demo:reset`.
+  (2) After changing packages, rebuild the dashboard (`pnpm --filter @vula/dashboard build`) before `stack:up`.
+  (3) The laptop went to sleep (21:42 → 21:53 local) with the stack running: watchdog `heartbeat_gap` 671 s, then
+  Supabase `ECONNRESET`, then everything resumed on its own. Working as designed, but **before the 4.5 h testnet run
+  turn sleep off** (`powercfg /change standby-timeout-ac 0`, laptop on AC). Otherwise the gap gets anchored on
+  Shadownet for good.
 
 ## 2026-11-23 (2): anchoring cost + more adoption channels
 

@@ -40,6 +40,7 @@ chain*: Vula's own stored copy no longer reproduces the roots anchored on-chain.
 
 | Step | Registry API call | On-chain effect | How we confirm |
 |---|---|---|---|
+| TAR profile (once per chain) | `POST /api/v1/TAR` ×2: DCAP's root asset schema, then our `VulaCheckpoint` profile (JSON-LD, `@context[0]` = root TAR id), as in DCAP.Web's "Data initialization" | two TARs that describe the record type; every checkpoint's `@context` is the profile's TAR id | `getChecksum(0)` of both = SHA-256(JCS) of the documents fixed in our code; verifier checks it on every run |
 | First checkpoint | `POST /api/v1/TAR` with the JCS (RFC 8785) text of the checkpoint | DCAP.Web deploys the TAR contract; the TAR id `urn:tar:eip155.{chain}:{address}` becomes the log's permanent identity | `totalVersions() = 1`, `getChecksum(0) = SHA-256(JCS(payload))` |
 | Every next checkpoint | `PUT /api/v1/TAR/{id}` | `push(checksum)` adds one version: **one TAR version = one checkpoint** (seq = version index) | wait for `hasChecksum` / the `Updated(version, checksum)` event, store the tx hash for the explorer link |
 | Verification | none: the verifier reads the contract directly (`totalVersions`, `getChecksum`, `dataUri`) with viem | — | re-hash every payload and compare with the on-chain checksum |
