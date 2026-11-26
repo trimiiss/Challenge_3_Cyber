@@ -17,6 +17,7 @@ import { verifyConsistency } from "@vula/merkle";
 import type {
   BatchSource,
   ChainSource,
+  ChainOnlyReport,
   CheckpointResult,
   Finding,
   LeafSource,
@@ -184,6 +185,39 @@ export async function verifyLog(opts: VerifyLogOptions): Promise<VerifyLogReport
     anchoredTreeSize,
     storedLeaves: stored.length,
     unanchoredLeaves: unanchored,
+    checkpoints: results,
+    firstBroken: firstBrokenResult
+      ? { version: firstBrokenResult.version, reason: firstFinding?.message ?? firstBrokenResult.checks.find((c) => !c.ok)?.name ?? "failed" }
+      : null,
+    findings,
+  };
+}
+
+/**
+ * `vula verify-log --chain-only`: part A alone, for an outsider with no database access. Every TAR version from
+ * the chain: SHA-256(JCS(payload)) = getChecksum, TAR profile, Ed25519 signature, seq, prevRoot link and the
+ * consistency proof between consecutive checkpoints. Proves the anchored history is append-only; says nothing
+ * about whether today's stored leaves still match it (that needs the auditor's access).
+ */
+export async function verifyLogChainOnly(
+  opts: Pick<VerifyLogOptions, "chain" | "payloads" | "trustedPublicKey" | "profile">,
+): Promise<ChainOnlyReport> {
+  const { total, results, authentic, findings, pinnedKey, profile } = await verifyCheckpoints(opts);
+  if (total === 0) {
+    findings.push({ code: "no_checkpoints", severity: "critical", layer: LAYER, message: `TAR ${opts.chain.tarId} has no versions on-chain` });
+  }
+  const firstBrokenResult = results.find((r) => !r.ok);
+  const firstFinding = findings.find((f) => f.severity === "critical" && f.version === firstBrokenResult?.version);
+  return {
+    ok: total > 0 && authentic.length === total && !findings.some((f) => f.severity === "critical"),
+    mode: "chain-only",
+    tarId: opts.chain.tarId,
+    chainId: opts.chain.chainId,
+    totalVersions: total,
+    verifiedVersions: authentic.length,
+    signerPublicKey: pinnedKey,
+    profile,
+    anchoredTreeSize: authentic.at(-1)?.payload.treeSize ?? 0,
     checkpoints: results,
     firstBroken: firstBrokenResult
       ? { version: firstBrokenResult.version, reason: firstFinding?.message ?? firstBrokenResult.checks.find((c) => !c.ok)?.name ?? "failed" }

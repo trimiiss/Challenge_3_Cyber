@@ -67,7 +67,8 @@ export function dataUriPayloadSource(reader: TarReader): PayloadSource {
  * The TAR profile (and its root schema) the checkpoints point to. Checksums come from the chain; the profile
  * payload comes from its own dataUri (the log server) or from vula.config, both untrusted.
  */
-export function profileSource(rpcUrl: string, from: "datauri" | "db", sql: Sql): ProfileSource {
+export function profileSource(rpcUrl: string, from: "datauri" | "db", sql?: Sql): ProfileSource {
+  if (from === "db" && !sql) throw new Error("profile from vula.config needs a database connection");
   const readers = new Map<string, TarReader>();
   const chain = (tarId: string): TarReader => {
     let r = readers.get(tarId);
@@ -79,7 +80,7 @@ export function profileSource(rpcUrl: string, from: "datauri" | "db", sql: Sql):
     chain,
     async getPayload(tarId, version) {
       if (from === "datauri") return dataUriPayloadSource(chain(tarId)).getPayload(version);
-      const rows = await sql<{ value: { tarId?: string; payload?: unknown } }[]>`select value from vula.config where key = 'profile'`;
+      const rows = await sql!<{ value: { tarId?: string; payload?: unknown } }[]>`select value from vula.config where key = 'profile'`;
       const p = rows[0]?.value;
       return p?.tarId === tarId && version === 0 ? (p.payload ?? null) : null;
     },

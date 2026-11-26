@@ -1,5 +1,27 @@
 # Progress log
 
+## 2026-11-26: final improvements, tasks 1–2 (public payload mirror, `verify-log --chain-only`)
+
+### Done
+- **Task 1, public payload mirror:** public Storage bucket `vula-tar` (migration `20261126120000_vula_tar_public_mirror.sql`,
+  applied to the `vula` project). The log server upserts the exact JSON of `GET /tar/0x{address}` to `vula-tar/0x{address}`
+  for the log TAR, the profile TAR and the root schema TAR (`mirror.ts`, shared `tar-docs.ts`). Failed uploads retry
+  with backoff and never block anchoring. A `mirror_lagging` warning fires when the mirror is more than 2 versions behind.
+  `pnpm testnet use` now writes `DCAP_URI_PREFIX={SUPABASE_URL}/storage/v1/object/public/vula-tar/` into infra/.env
+  (localhost stays for Hardhat). The log server halts if a TAR on a non-Hardhat chain gets a localhost dataUri.
+  Tests: mirror == `/tar/0x…` response for all 3 TARs, dataUri(0) resolves to it via the verifier's source,
+  backoff + lag alert, testnet prefix. Live: `pnpm mirror:smoke` ✅ (upsert ×2, public read without credentials,
+  `application/json`, `max-age=10`).
+- **Task 2, `vula verify-log --chain-only`:** needs only `--tar` + `--rpc`. Payloads via dataUri, profile, checksum,
+  signature, seq, prevRoot link and consistency proofs. Opens no DB connection and reads no credentials. Output:
+  "chain-only: N checkpoints verified append-only; stored leaves not checked (needs auditor access)". Exit ≠ 0 on any
+  failure. Tests: clean, altered payload, broken prevRoot, bad consistency proof, missing payloads; runner with
+  `@vula/db` mocked so any `connect()` fails the test. Live: run from an empty directory with an empty environment against
+  Shadownet RPC, reached the chain with no env/DB error (no Vula TAR on Shadownet yet, so no positive live run).
+
+### Next
+Task 3: the Shadownet run (team), then fill the report placeholders from real data and run `--chain-only` against it.
+
 ## 2026-11-24: official Getting Started guide + TAR profile
 
 ### Done

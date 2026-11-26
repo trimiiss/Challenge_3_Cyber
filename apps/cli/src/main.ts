@@ -2,6 +2,7 @@
 /**
  * vula: the auditor's CLI (CLAUDE.md §7.5).
  *   vula verify-log   chain vs log: every TAR version, signatures, consistency proofs, stored leaves vs anchored roots
+ *                     (--chain-only: the anchored checkpoints alone, for outsiders: no database, no .env)
  *   vula reconcile    log vs source: captured events vs what Supabase holds today
  *   vula verify-event inclusion proof of one event against the latest anchored root, with the proof path
  *   vula watch        both, every N seconds; new findings become dashboard alerts
@@ -11,7 +12,7 @@
 import { Command } from "commander";
 import { generateSigningKey } from "@vula/core";
 import { reportFindings } from "@vula/verifier/sources";
-import type { Finding, ReconcileReport, VerifyEventReport, VerifyLogReport } from "@vula/verifier";
+import type { ChainOnlyReport, Finding, ReconcileReport, VerifyEventReport, VerifyLogReport } from "@vula/verifier";
 import { readFileSync } from "node:fs";
 import {
   auditorDb,
@@ -21,6 +22,7 @@ import {
   runVerifyCti,
   runVerifyEvent,
   runVerifyLog,
+  runVerifyLogChainOnly,
   type AuditOptions,
   type CtiOptions,
   type CtiReport,
@@ -57,6 +59,28 @@ function printVerifyLog(r: VerifyLogReport & { pinned: boolean; payloadSource: s
     r.ok
       ? `\nRESULT ✅ log verified against ${r.totalVersions} anchored checkpoints (${r.anchoredTreeSize} events)\n`
       : `\nRESULT ❌ first broken checkpoint: TAR version ${r.firstBroken?.version ?? "?"}: ${r.firstBroken?.reason ?? "see findings"}\n`,
+  );
+}
+
+function printChainOnly(r: ChainOnlyReport & { payloadSource: string; rpcUrl: string }): void {
+  console.log("\nVula verify-log --chain-only  (trust anchor: the chain; no database, no credentials)");
+  console.log(`  TAR       ${r.tarId}  (chain ${r.chainId}, ${r.totalVersions} versions)`);
+  console.log(`  rpc       ${r.rpcUrl}`);
+  console.log(`  signer    ${r.signerPublicKey ?? "?"}`);
+  if (r.profile) {
+    console.log(`  profile   ${r.profile.tarId}  ${r.profile.ok ? "✅ VulaCheckpoint TAR profile" : "❌ not a valid VulaCheckpoint TAR profile"}`);
+    if (r.profile.rootSchemaTarId) console.log(`            root asset schema ${r.profile.rootSchemaTarId}`);
+  }
+  console.log(`  payloads  ${r.payloadSource}\n`);
+  for (const c of r.checkpoints) {
+    const failed = c.checks.filter((x) => !x.ok).map((x) => x.name);
+    console.log(`  ${c.ok ? "✅" : "❌"} v${c.version}  seq ${c.seq ?? "?"}  size ${String(c.treeSize ?? "?").padEnd(6)} root ${c.rootHash?.slice(0, 16) ?? "?"}…  ${failed.join("; ")}`);
+  }
+  printFindings(r.findings);
+  console.log(
+    r.ok
+      ? `\nRESULT ✅ chain-only: ${r.verifiedVersions} checkpoints verified append-only (${r.anchoredTreeSize} events anchored); stored leaves not checked (needs auditor access)\n`
+      : `\nRESULT ❌ chain-only: first broken checkpoint: TAR version ${r.firstBroken?.version ?? "?"}: ${r.firstBroken?.reason ?? "see findings"} (${r.verifiedVersions} of ${r.totalVersions} checkpoints verified; stored leaves not checked)\n`,
   );
 }
 
@@ -114,12 +138,22 @@ program
   .description("verify the log against the TAR anchored on-chain")
   .option("--tar <id>", "TAR id to audit (default: VULA_TAR_ID)")
   .option("--rpc <url>", "chain JSON-RPC URL (default: CHAIN_RPC_URL)")
+  .option("--chain-only", "outsider mode: only --tar + --rpc; checks every anchored checkpoint, opens no database connection")
   .option("--payloads <source>", "where to fetch checkpoint payloads: datauri (on-chain pointer) | db", "datauri")
   .option("--pubkey <base64>", "pin the expected checkpoint signing key")
   .option("--no-batches", "do not download batches to pinpoint altered leaves")
   .option("--json", "machine-readable output")
   .option("--report", "write findings to vula.alerts (dashboard)")
-  .action(async (o: AuditOptions & { json?: boolean; report?: boolean }) => {
+  .action(async (o: AuditOptions & { json?: boolean; report?: boolean; chainOnly?: boolean }) => {
+    if (o.chainOnly) {
+      if (o.report) throw new Error("--report writes to the database; it cannot be combined with --chain-only");
+      if (o.payloads === "db") throw new Error("--payloads db reads the database; --chain-only always follows the on-chain dataUri");
+      const r = await runVerifyLogChainOnly(o);
+      if (o.json) console.log(JSON.stringify(r, null, 2));
+      else printChainOnly(r);
+      process.exitCode = r.ok ? 0 : 1;
+      return;
+    }
     const r = await runVerifyLog(o);
     if (o.report) await reportFindings(auditorDb(), r.findings, "vula verify-log");
     if (o.json) console.log(JSON.stringify(r, null, 2));

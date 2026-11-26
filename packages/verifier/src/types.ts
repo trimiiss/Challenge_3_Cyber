@@ -90,6 +90,24 @@ export interface VerifyLogReport {
   findings: Finding[];
 }
 
+/** `verify-log --chain-only`: the anchored checkpoints alone (no stored leaves, no batches, no database). */
+export interface ChainOnlyReport {
+  ok: boolean;
+  mode: "chain-only";
+  tarId: string;
+  chainId: number;
+  totalVersions: number;
+  /** Versions that passed every check (= totalVersions when ok). */
+  verifiedVersions: number;
+  signerPublicKey: string | null;
+  profile: ProfileReport | null;
+  /** Tree size of the last verified checkpoint. */
+  anchoredTreeSize: number;
+  checkpoints: CheckpointResult[];
+  firstBroken: { version: number; reason: string } | null;
+  findings: Finding[];
+}
+
 export interface ReconcileReport {
   ok: boolean;
   capturedEvents: number;

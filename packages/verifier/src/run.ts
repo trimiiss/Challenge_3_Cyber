@@ -5,10 +5,10 @@
 import { createTarReader, explorerTxUrl, isTarId } from "@vula/compellio";
 import { connect, loadEnv, type Sql } from "@vula/db";
 import { reconcile } from "./reconcile";
-import { verifyLog } from "./verify-log";
+import { verifyLog, verifyLogChainOnly } from "./verify-log";
 import { verifyEvent, type EventSelector, type VerifyEventReport } from "./verify-event";
 import { verifyCtiTar, type CtiVerification } from "./verify-cti";
-import type { ReconcileReport, VerifyLogReport } from "./types";
+import type { ChainOnlyReport, ReconcileReport, VerifyLogReport } from "./types";
 import {
   capturedEvents,
   dataUriPayloadSource,
@@ -79,6 +79,31 @@ export async function runVerifyLog(opts: AuditOptions = {}): Promise<VerifyLogRe
     heartbeatGapMs: Number(process.env.HEARTBEAT_GAP_MS || 150_000),
   });
   return { ...report, pinned, payloadSource: payloads.name };
+}
+
+/**
+ * `verify-log --chain-only`: what anyone can check with nothing but the TAR id and a public RPC. Payloads come
+ * from the on-chain dataUri (the public Storage mirror on testnet). Opens NO database connection and reads no
+ * credentials, so it runs from a clean checkout without a .env.
+ */
+export async function runVerifyLogChainOnly(
+  opts: Pick<AuditOptions, "tar" | "rpc" | "pubkey"> = {},
+): Promise<ChainOnlyReport & { pinned: true; payloadSource: string; rpcUrl: string }> {
+  const tarId = opts.tar || process.env.VULA_TAR_ID;
+  if (!tarId) throw new Error("--chain-only needs the TAR id: pass --tar <id> (or set VULA_TAR_ID)");
+  if (!isTarId(tarId)) throw new Error(`not a TAR id: ${tarId}`);
+  const rpcUrl = opts.rpc || process.env.CHAIN_RPC_URL || "http://localhost:8545";
+  const reader = createTarReader({ rpcUrl, tarId });
+  await reader.assertChain();
+  if (!(await reader.exists())) throw new Error(`no TAR contract at ${reader.address} on chain ${reader.chainId} (${rpcUrl})`);
+  const payloads = dataUriPayloadSource(reader);
+  const report = await verifyLogChainOnly({
+    chain: reader,
+    payloads,
+    trustedPublicKey: opts.pubkey,
+    profile: profileSource(rpcUrl, "datauri"),
+  });
+  return { ...report, pinned: true, payloadSource: payloads.name, rpcUrl };
 }
 
 export async function runReconcile(): Promise<ReconcileReport> {
