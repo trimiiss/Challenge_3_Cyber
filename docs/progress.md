@@ -1,5 +1,24 @@
 # Progress log
 
+## 2026-11-26 (2): task 3 prep, `pnpm anchor:report`
+
+### Done
+- **`pnpm anchor:report`** (`scripts/anchor-report.ts`, pure logic in `packages/compellio/src/anchor-stats.ts`):
+  read-only (auditor DB role + chain RPC) summary of the current anchoring run: TAR id + explorer link, anchored /
+  pending / failed / retried checkpoints vs on-chain `totalVersions`, anchored leaves per source, anchor latency
+  (signed → confirmed, median / p95 / max), gas for TAR creation and per `push` + fee in XTZ from the real receipts,
+  gaps > 2× the interval, first/last tx links. Prints the ready-to-paste "Live numbers" sentence for the PoC report
+  §5. Exit ≠ 0 while < 50 checkpoints are anchored, a receipt is missing, or DB and chain disagree, so it is also the
+  "is the testnet run done?" check. `--json` for machine output. +4 tests.
+
+### Blocked (task 3 needs the team)
+- Shadownet wallet `0xF52FAf67B682542eD48eBc8C0d05525e83AdC019` still has **0 XTZ** (checked today). Fund it at
+  https://shadownet.faucet.etherlink.com/ (captcha), start Docker Desktop, turn sleep off
+  (`powercfg /change standby-timeout-ac 0`, on AC), then:
+  `pnpm testnet use && pnpm stack:down && pnpm infra:up && pnpm demo:reset && pnpm stack:up`.
+  After ≈ 4.5 h: `pnpm anchor:report` (✅ = done) → paste its sentence into the report §5 →
+  `pnpm vula verify-log --chain-only --tar <id> --rpc https://node.shadownet.etherlink.com`.
+
 ## 2026-11-26: final improvements, tasks 1–2 (public payload mirror, `verify-log --chain-only`)
 
 ### Done

@@ -33,17 +33,20 @@
     "realtime:smoke": "tsx scripts/realtime-smoke.ts",
     "auth-audit": "tsx scripts/auth-audit.ts",
     "demo:reset": "tsx scripts/stack.ts down log-server collector && tsx attacks/src/cli.ts reset && tsx scripts/stack.ts up log-server collector",
-    "mirror:smoke": "tsx scripts/mirror-smoke.ts"
+    "mirror:smoke": "tsx scripts/mirror-smoke.ts",
+    "anchor:report": "tsx scripts/anchor-report.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.119.0",
     "@types/node": "22.20.5",
     "@vula/attacks": "workspace:*",
+    "@vula/compellio": "workspace:*",
     "@vula/db": "workspace:*",
     "@vula/verifier": "workspace:*",
     "supabase": "2.122.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
+    "viem": "2.57.16",
     "vitest": "4.1.12"
   },
   "pnpm": {

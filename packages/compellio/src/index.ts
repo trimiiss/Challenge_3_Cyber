@@ -14,3 +14,12 @@ export {
   type RegistryRecord,
 } from "./registry";
 export { TAR_MIRROR_BUCKET, publicTarMirrorPrefix, setEnvLine, getEnvLine, testnetInfraEnv } from "./mirror";
+export {
+  anchorStats,
+  reportLine,
+  distribution,
+  type AnchorStats,
+  type AnchorStatsInput,
+  type CheckpointRow,
+  type TxCost,
+} from "./anchor-stats";

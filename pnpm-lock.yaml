@@ -17,6 +17,9 @@ importers:
       '@vula/attacks':
         specifier: workspace:*
         version: link:attacks
+      '@vula/compellio':
+        specifier: workspace:*
+        version: link:packages/compellio
       '@vula/db':
         specifier: workspace:*
         version: link:packages/db
@@ -32,6 +35,9 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      viem:
+        specifier: 2.57.16
+        version: 2.57.16(typescript@5.9.3)(zod@4.6.7)
       vitest:
         specifier: 4.1.12
         version: 4.1.12(@types/node@22.20.5)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
