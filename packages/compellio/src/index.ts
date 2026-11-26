@@ -13,3 +13,4 @@ export {
   type RegistryMode,
   type RegistryRecord,
 } from "./registry";
+export { TAR_MIRROR_BUCKET, publicTarMirrorPrefix, setEnvLine, getEnvLine, testnetInfraEnv } from "./mirror";

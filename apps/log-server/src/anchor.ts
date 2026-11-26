@@ -193,6 +193,13 @@ export class Anchorer {
       if (Date.now() > deadline) throw new Error(`${label} ${tarId}: checksum not on-chain after 180 s`);
       await new Promise((r) => setTimeout(r, 1_000));
     }
+    // dataUri is fixed forever in the contract. On a public chain it must not point at this laptop.
+    const uri = await reader.dataUri(0).catch(() => "");
+    if (reader.chainId !== 31337 && /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)[:/]/i.test(uri)) {
+      this.halted = `TAR ${tarId} on chain ${reader.chainId} has dataUri ${uri}: no outside auditor can fetch it. Set DCAP_URI_PREFIX to the public mirror (pnpm testnet use), pnpm infra:up, pnpm demo:reset`;
+      await this.deps.store.alert("datauri_not_public", "critical", "TAR dataUri points at localhost on a public chain", { tarId, uri });
+      throw new Error(this.halted);
+    }
     const link = explorerAddressUrl(reader.chainId, reader.address);
     console.log(`[profile] registered ${label} as TAR ${tarId} (receipt ${rec.receipt})${link ? `  ${link}` : ""}`);
     return tarId;

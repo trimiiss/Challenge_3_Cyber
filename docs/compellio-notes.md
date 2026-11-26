@@ -43,6 +43,22 @@ It returns `{DCAP__UriPrefix}0x{contract address, lowercase}` for every version.
 serve all versions of the TAR at one URL. Plan: `DCAP__UriPrefix=http://localhost:4000/tar/` → log server serves
 `GET /tar/0x{address}` with every checkpoint payload. The verifier treats it as untrusted and re-hashes each payload.
 
+**The prefix is permanent.** `uriPrefix_` is a constructor argument of the TAR contract, so it is fixed when the TAR is
+created. A localhost prefix on Shadownet would make every payload unreachable for outside auditors, forever. So on
+testnet `DCAP_URI_PREFIX = {SUPABASE_URL}/storage/v1/object/public/vula-tar/` (`pnpm testnet use` writes it):
+- `vula-tar` is a **public** Storage bucket (migration `20261126120000_vula_tar_public_mirror.sql`, JSON only, 10 MB
+  per object). Only the log server's `service` Auth user may write it. Contents: checkpoint payloads (hashes, sizes,
+  timestamps, public key) and the two profile documents. No event data: batches stay in the private `vula-batches`.
+- After every anchor (and after the root schema / profile TARs are registered) the log server upserts the same JSON
+  that `GET /tar/0x{address}` serves to `vula-tar/0x{address}` (`apps/log-server/src/mirror.ts`, `cacheControl: 10`).
+  A failed upload never blocks anchoring: it retries with backoff and raises a `mirror_lagging` warning alert once the
+  mirror is more than 2 versions behind.
+- Guard: if a profile TAR registered on a non-Hardhat chain has a localhost `dataUri`, the log server halts before
+  creating the log TAR (`datauri_not_public` critical alert).
+- Live check: `pnpm mirror:smoke` (upsert twice as the service user, public read without credentials, JSON,
+  `max-age=10`).
+- Locally (Hardhat) the prefix stays `http://localhost:4000/tar/`; the mirror still uploads, which is harmless.
+
 ### 1.5 Registration timing (DCAP.Web vs Gateway)
 - **DCAP.Web POST is synchronous.** It deploys the contract, sleeps 2 s twice, reads the receipt, then returns the
   TAR id. About 5 s on Hardhat.

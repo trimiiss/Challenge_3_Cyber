@@ -3,7 +3,8 @@
  *
  *   pnpm testnet wallet   create a NEW testnet-only wallet in infra/.env.testnet (gitignored), print its address
  *   pnpm testnet status   balance of that wallet on Shadownet
- *   pnpm testnet use      (needs a funded wallet) point DCAP.Web + log server + verifier at Shadownet, 5-min checkpoints
+ *   pnpm testnet use      (needs a funded wallet) point DCAP.Web + log server + verifier at Shadownet, 5-min checkpoints,
+ *                         and dataUri at the PUBLIC payload mirror {SUPABASE_URL}/storage/v1/object/public/vula-tar/
  *   pnpm testnet local    back to Hardhat, 1-min checkpoints
  *
  * After `use` / `local`: `pnpm infra:up` (recreates DCAP.Web with the new chain), then `pnpm demo:reset`
@@ -14,6 +15,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createPublicClient, formatEther, http } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { etherlinkShadownet } from "../src/chains";
+import { getEnvLine, publicTarMirrorPrefix, setEnvLine, testnetInfraEnv } from "../src/mirror";
 
 const ROOT = new URL("../../../", import.meta.url);
 const path = (p: string) => new URL(p, ROOT);
@@ -40,11 +42,15 @@ function readKey(): `0x${string}` {
 /** Sets KEY=value lines in the root .env, keeping everything else (and comments) as is. */
 function setRootEnv(values: Record<string, string>): void {
   let text = existsSync(ROOT_ENV) ? readFileSync(ROOT_ENV, "utf8") : "";
-  for (const [k, v] of Object.entries(values)) {
-    const re = new RegExp(`^${k}=.*$`, "m");
-    text = re.test(text) ? text.replace(re, `${k}=${v}`) : `${text.trimEnd()}\n${k}=${v}\n`;
-  }
+  for (const [k, v] of Object.entries(values)) text = setEnvLine(text, k, v);
   writeFileSync(ROOT_ENV, text);
+}
+
+/** SUPABASE_URL from the root .env: the public payload mirror bucket `vula-tar` lives in that project. */
+function supabaseUrl(): string {
+  const url = existsSync(ROOT_ENV) ? getEnvLine(readFileSync(ROOT_ENV, "utf8"), "SUPABASE_URL") : undefined;
+  if (!url || url.includes("<project-ref>")) throw new Error("set SUPABASE_URL in .env first (the public TAR mirror bucket vula-tar lives there)");
+  return url;
 }
 
 async function balance(address: `0x${string}`): Promise<bigint> {
@@ -64,7 +70,9 @@ if (cmd === "wallet") {
 DCAP_PRIVATE_KEY=${key}
 DCAP_BLOCKCHAIN_URL=${RPC}
 DCAP_BLOCKCHAIN_ID=${etherlinkShadownet.id}
-DCAP_URI_PREFIX=http://localhost:4000/tar/
+# dataUri is fixed forever in every TAR contract. \`pnpm testnet use\` sets it to the PUBLIC payload mirror
+# {SUPABASE_URL}/storage/v1/object/public/vula-tar/ when it writes infra/.env.
+DCAP_URI_PREFIX=
 `,
     );
     console.log(`new testnet-only wallet: ${privateKeyToAccount(key).address}  (key in infra/.env.testnet)`);
@@ -79,11 +87,14 @@ DCAP_URI_PREFIX=http://localhost:4000/tar/
   const address = privateKeyToAccount(readKey()).address;
   const b = await balance(address);
   if (b === 0n) throw new Error(`${address} has 0 XTZ on Shadownet: fund it at ${FAUCET} first`);
+  // The prefix is baked into every TAR contract on Shadownet, forever: it must be a public URL, never localhost.
+  const prefix = publicTarMirrorPrefix(supabaseUrl());
   if (existsSync(INFRA_ENV)) copyFileSync(INFRA_ENV, path("infra/.env.backup"));
-  copyFileSync(TESTNET_FILE, INFRA_ENV);
+  writeFileSync(INFRA_ENV, testnetInfraEnv(readFileSync(TESTNET_FILE, "utf8"), supabaseUrl()));
   setRootEnv({ CHAIN_RPC_URL: RPC, CHECKPOINT_INTERVAL_MS: "300000", VULA_TAR_ID: "" });
   console.log(`switched to Etherlink Shadownet: DCAP.Web signs with ${address} (${formatEther(b)} XTZ), checkpoints every 5 min`);
-  console.log("next: pnpm stack:down && pnpm infra:up && pnpm demo:reset && pnpm stack:up");
+  console.log(`dataUri prefix (public payload mirror, fixed in every new TAR): ${prefix}`);
+  console.log("next:pnpm stack:down && pnpm infra:up && pnpm demo:reset && pnpm stack:up");
 } else if (cmd === "local") {
   writeFileSync(INFRA_ENV, LOCAL_INFRA);
   setRootEnv({ CHAIN_RPC_URL: "http://localhost:8545", CHECKPOINT_INTERVAL_MS: "60000", VULA_TAR_ID: "" });

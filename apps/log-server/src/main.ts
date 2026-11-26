@@ -9,6 +9,7 @@ import { Anchorer } from "./anchor";
 import { BatchStore } from "./batches";
 import { buildServer } from "./server";
 import { CtiPublisher } from "./cti";
+import { TarMirror, publicMirrorPrefix, supabaseMirrorTarget } from "./mirror";
 
 const store = new Store(connect("vula_log", { max: 4 }));
 const log = new LogService(store);
@@ -18,6 +19,14 @@ const batches = new BatchStore(config.supabaseUrl, config.supabaseKey, config.se
 const anchorer = new Anchorer({
   store, log, registry, batches, signer,
   logId: config.logId, rpcUrl: config.rpcUrl, intervalMs: config.checkpointIntervalMs,
+});
+
+// Public payload mirror (vula-tar bucket): what on-chain dataUri points to on testnet. Never blocks anchoring.
+const mirror = new TarMirror({
+  target: supabaseMirrorTarget(config.supabaseUrl, config.supabaseKey, config.serviceEmail, config.servicePassword),
+  state: () => ({ tar: anchorer.tar, profile: anchorer.profile, checkpoints: anchorer.checkpoints }),
+  loadCheckpoints: () => store.loadCheckpoints(),
+  alert: (kind, severity, title, details) => store.alert(kind, severity, title, details),
 });
 
 // ------------------------------------------------------------------ startup
@@ -71,10 +80,12 @@ const app = buildServer({
 });
 await app.listen({ port: config.port, host: "0.0.0.0" });
 console.log(`[vula] log server on :${config.port}, checkpoint every ${config.checkpointIntervalMs / 1000} s`);
+console.log(`[vula] public TAR payload mirror: ${publicMirrorPrefix(config.supabaseUrl)} (set DCAP_URI_PREFIX to this on testnet)`);
 
 // The anchorer gates itself: new checkpoints at most once per interval, failed anchors on their own backoff.
 const timers = [
-  setInterval(() => void anchorer.tick().catch((e) => console.error("[anchor]", e)), 5_000),
+  // The mirror runs right after each anchor tick (new version -> upload), on its own error path.
+  setInterval(() => void anchorer.tick().catch((e) => console.error("[anchor]", e)).finally(() => void mirror.tick().catch((e) => console.error("[mirror]", e))), 5_000),
   setInterval(() => void watchdog().catch((e) => console.error("[watchdog]", e)), 5_000),
 ];
 if (config.bcbctiUrl) {
