@@ -2,8 +2,8 @@
 
 **PoC report draft** · BlockJump Open Innovation Challenges 2026 · Challenge 03: Cybersecurity
 Budget: 4 pages on Compellio's template (~1,800 words + 1 figure). Section headings below are placeholders until we
-paste into the organisers' DOCX template; map them 1:1 to its sections. Values marked **[testnet]** are filled in
-from the Etherlink run.
+paste into the organisers' DOCX template; map them 1:1 to its sections. Numbers in §5 are from the live Etherlink
+Shadownet run (27 Nov 2026).
 
 ---
 
@@ -50,17 +50,20 @@ chain*: Vula's own stored copy no longer reproduces the roots anchored on-chain.
   own hash with `getChecksum` (milestone M0). DCAP.Web hashes the exact body it receives, so we always send JCS text.
 - DCAP.Web is not safe for concurrent writes, so the anchor worker keeps exactly one request in flight, retries the
   *same* payload with backoff, never skips a seq, and always chains from the last **anchored** checkpoint.
-- `dataUri(v)` points to our log server, which serves all payloads. Payloads are treated as untrusted: a rewritten
-  checkpoint store is caught because its payloads no longer hash to the on-chain checksums (attack 6).
+- `dataUri(v)` points to a public read-only mirror of every checkpoint payload (Supabase Storage), so an outside
+  auditor needs no credentials: `vula verify-log --chain-only` takes only the TAR id and an RPC URL. Payloads are
+  treated as untrusted: a rewritten checkpoint store is caught because its payloads no longer hash to the on-chain
+  checksums (attack 6).
 - The client is switchable (`REGISTRY_MODE=dcap-local | gateway | mock`); Gateway mode adds the session key headers
-  and receipt polling. Local: DCAP.Web + Hardhat. Final demo: **Etherlink Shadownet testnet [testnet]**.
+  and receipt polling. Local: DCAP.Web + Hardhat. Final demo: **Etherlink Shadownet testnet** (chain id 127823).
 - One TAR transaction covers every event since the last checkpoint (hundreds or thousands); per-event inclusion proofs
   remain available. This is why we use one TAR per log rather than one TAR per event.
 
 ## 4. Architecture
 
-*Figure 1 (to draw): UIBM Grades → Supabase (triggers) → collector → log server (Merkle tree, checkpoint signer,
-anchor worker) → Compellio Registry API → TAR contract on Etherlink; auditor CLI and dashboard read the chain directly.*
+![Figure 1: Vula architecture](figures/architecture.svg)
+
+*Figure 1: everything on the operator side can be changed by an insider; the auditor trusts only the TAR on-chain.*
 
 | Component | Tech |
 |---|---|
@@ -95,8 +98,11 @@ up to 1,000, tamper/reorder/truncate/fork negatives); verifier unit tests for ev
 A partner or KOS-CERT runs `vula verify-cti`: ✅ for the attack 3 incidents; after editing a stored incident to
 downplay it (critical → info): ❌ `artifact … was altered`.
 
-**Live numbers [testnet]:** TAR id …, ≥ 50 anchored checkpoints, … events, median anchor latency … s, gas per
-`push` …, explorer link …. Locally (Hardhat): anchoring takes 0.5–0.7 s per checkpoint; a dashboard attack produces a
+**Live numbers (Etherlink Shadownet Testnet):** TAR id `urn:tar:eip155.127823:6a993a937dd8bc469e48dc2bcf327ef5c9d3f927`,
+50 anchored checkpoints over 4.1 h, 786 events (68 audit events + 718 heartbeats), median anchor latency 7.1 s
+(p95 9.2 s), gas per `push` 844,020 (≈ 0.00084402 XTZ), explorer:
+https://shadownet.explorer.etherlink.com/address/0x6a993a937dd8bc469e48dc2bcf327ef5c9d3f927. An outside auditor
+with only the RPC URL runs `vula verify-log --chain-only`: ✅ all 50 checkpoints append-only. Locally (Hardhat): anchoring takes 0.5–0.7 s per checkpoint; a dashboard attack produces a
 red real-time alert in ≈ 4 s.
 
 ## 6. Security analysis and limits

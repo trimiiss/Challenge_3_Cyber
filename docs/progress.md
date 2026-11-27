@@ -1,5 +1,19 @@
 # Progress log
 
+## 2026-11-27 (2): task 3 done, 50 checkpoints on Shadownet
+
+### Done
+- The PC hibernated at 42/50 (AC hibernate timeout was 3 h, sleep was already off; now both 0). Restarted with
+  `pnpm infra:up && pnpm stack:up` (no `demo:reset`): the log server resumed from the stored log, seq 42 = TAR v42.
+  Outage ≈ 8 min, under the 2× interval gap threshold.
+- `pnpm anchor:report` ✅: 50 anchored, chain 50 versions, 786 events, median latency 7.1 s, 844,020 gas/push,
+  0.079 XTZ total. Last tx
+  https://shadownet.explorer.etherlink.com/tx/0x1f3b521d7fc6eab286ab04f750350b7574cc9c24de56712146d9dda3daee4e32
+- `vula verify-log --chain-only` on Shadownet ✅ 50 checkpoints. Numbers pasted into PoC report §5.
+
+### Next
+Docs/video (M5). The stack is still running on Shadownet (≈ 0.00084 XTZ per checkpoint); `pnpm testnet local` to go back.
+
 ## 2026-11-27: task 3, Shadownet run started
 
 ### Done

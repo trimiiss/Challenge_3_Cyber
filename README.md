@@ -14,6 +14,20 @@ UIBM Grades app ─► Supabase (triggers → app_audit.events) ─► collector
 auditor:  vula verify-log (log vs chain) · vula reconcile (source vs log) · vula verify-event (one event's proof) · live alerts
 ```
 
+## Live on Etherlink Shadownet testnet
+
+50 checkpoints of the demo log anchored as 50 versions of one TAR (27 Nov 2026, 4.1 h, 786 events):
+`urn:tar:eip155.127823:6a993a937dd8bc469e48dc2bcf327ef5c9d3f927`, explorer:
+https://shadownet.explorer.etherlink.com/address/0x6a993a937dd8bc469e48dc2bcf327ef5c9d3f927
+
+Anyone can verify it with no credentials (payloads come from the public mirror the TAR's `dataUri` points to):
+
+```sh
+pnpm install
+pnpm vula verify-log --chain-only --tar urn:tar:eip155.127823:6a993a937dd8bc469e48dc2bcf327ef5c9d3f927 \
+  --rpc https://node.shadownet.etherlink.com
+```
+
 ## Quickstart
 
 Prerequisites: Node ≥ 22, pnpm 9 (`npm i -g pnpm@9`), Docker Desktop, a Supabase project with the migrations in
