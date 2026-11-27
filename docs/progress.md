@@ -1,5 +1,27 @@
 # Progress log
 
+## 2026-11-27: task 3, Shadownet run started
+
+### Done
+- Wallet funded (4.9 XTZ via the Shadownet faucet), sleep off on AC, stack switched with `pnpm testnet use`.
+- On-chain (Shadownet, chain 127823):
+  - root asset schema TAR `urn:tar:eip155.127823:cdc6fec9e2233b8fe019e18b50924f93065f2e58`
+  - VulaCheckpoint profile TAR `urn:tar:eip155.127823:9cfc099ccf51caeabd6db0d70018e33fb5f11d7f` (first POST got
+    HTTP 500 "Contract deployment failed" from DCAP.Web right after the root schema deploy; the 30 s retry worked)
+  - **log TAR `urn:tar:eip155.127823:6a993a937dd8bc469e48dc2bcf327ef5c9d3f927`**, v0 tx
+    https://shadownet.explorer.etherlink.com/tx/0x0cdd8f256848b3760d62d47323f54bad3d14d74f89594832b2b0bf93c11e2ec7,
+    v1 tx https://shadownet.explorer.etherlink.com/tx/0x9140d4e0326f5a2206629335b52c958096f75634e12445a5372b87f494bc92eb
+- **Fix (Etherlink only):** the Shadownet RPC refuses `eth_getLogs` over more than 500 blocks ("Block range is too
+  large"), so finding the `Updated` event for v0 failed (it queried from block 0, and the PUT path from head-500,
+  which is 501 blocks). `TarReader.findUpdateLog` now scans back from the head in 400-block windows (default: the
+  last 20,000 blocks). Hardhat never showed this.
+- First positive live `vula verify-log --chain-only` on Shadownet ✅ (2 checkpoints, payloads from the public mirror,
+  profile ✅).
+
+### Next
+`pnpm anchor:report` is polled every 10 min; when it is ✅ (≥ 50 checkpoints, about 23:30 local) paste its sentence
+into the PoC report §5 and rerun `--chain-only`.
+
 ## 2026-11-26 (2): task 3 prep, `pnpm anchor:report`
 
 ### Done

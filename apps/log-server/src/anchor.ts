@@ -270,7 +270,7 @@ export class Anchorer {
     const checksum = `0x${row.checksum.toString("hex")}` as Hex;
     const t0 = Date.now();
     try {
-      let fromBlock = 0n;
+      let fromBlock: bigint | undefined;
       if (!this.tar) {
         if (row.seq !== 0) throw new Error(`no TAR yet but checkpoint seq is ${row.seq}`);
         const rec = await registry.create(row.payload);
@@ -283,7 +283,7 @@ export class Anchorer {
         const reader = this.reader!;
         const total = await reader.totalVersions();
         const head = await reader.blockNumber();
-        fromBlock = head > 500n ? head - 500n : 0n;
+        fromBlock = head > 2_000n ? head - 2_000n : 0n;
         if (total > row.seq) {
           const onchain = await reader.getChecksum(row.seq);
           if (onchain.toLowerCase() !== checksum) {

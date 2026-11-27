@@ -15,6 +15,11 @@ export interface UpdateLog {
   blockNumber: bigint;
 }
 
+/** Etherlink's RPC refuses eth_getLogs over more than 500 blocks ("Block range is too large"). */
+export const LOG_WINDOW = 400n;
+/** How far back findUpdateLog looks by default (≈ 1 day of Etherlink blocks, 50 RPC calls at most). */
+export const MAX_LOG_SCAN = 20_000n;
+
 /**
  * Reads a TAR straight from the chain. This is the auditor's only trust anchor: it needs nothing but an RPC
  * URL and the TAR id (which encodes chain id + contract address).
@@ -85,23 +90,30 @@ export function createTarReader(opts: { rpcUrl: string; tarId: string }) {
       return out;
     },
 
-    /** The Updated(version, checksum) event for a version: gives the tx hash for explorer links. */
-    async findUpdateLog(version: number, fromBlock: bigint = 0n): Promise<UpdateLog | null> {
-      const logs = await client.getContractEvents({
-        ...base,
-        eventName: "Updated",
-        args: { version: BigInt(version) },
-        fromBlock,
-        toBlock: "latest",
-      });
-      const log = logs.at(-1);
-      if (!log || !log.transactionHash || log.blockNumber === null) return null;
-      return {
-        version,
-        checksum: log.args.checksum ?? "",
-        txHash: log.transactionHash,
-        blockNumber: log.blockNumber,
-      };
+    /**
+     * The Updated(version, checksum) event for a version: gives the tx hash for explorer links.
+     * Etherlink's RPC rejects eth_getLogs over more than 500 blocks, so this scans backwards from the
+     * head in LOG_WINDOW-sized windows down to `fromBlock` (default: the last MAX_LOG_SCAN blocks).
+     */
+    async findUpdateLog(version: number, fromBlock?: bigint): Promise<UpdateLog | null> {
+      const head = await client.getBlockNumber();
+      const lowest = fromBlock ?? (head > MAX_LOG_SCAN ? head - MAX_LOG_SCAN : 0n);
+      for (let to = head; to >= lowest; to -= LOG_WINDOW) {
+        const from = to - LOG_WINDOW + 1n > lowest ? to - LOG_WINDOW + 1n : lowest;
+        const logs = await client.getContractEvents({
+          ...base,
+          eventName: "Updated",
+          args: { version: BigInt(version) },
+          fromBlock: from,
+          toBlock: to,
+        });
+        const log = logs.at(-1);
+        if (log && log.transactionHash && log.blockNumber !== null) {
+          return { version, checksum: log.args.checksum ?? "", txHash: log.transactionHash, blockNumber: log.blockNumber };
+        }
+        if (from === lowest) break;
+      }
+      return null;
     },
 
     /**
@@ -111,7 +123,7 @@ export function createTarReader(opts: { rpcUrl: string; tarId: string }) {
      */
     async waitForChecksum(
       checksum: Hex,
-      { timeoutMs = 120_000, intervalMs = 1_000, fromBlock = 0n } = {},
+      { timeoutMs = 120_000, intervalMs = 1_000, fromBlock = undefined as bigint | undefined } = {},
     ): Promise<UpdateLog> {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
